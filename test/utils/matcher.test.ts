@@ -1,5 +1,5 @@
 import * as assert from "assert"
-import * as np from "path"
+import { resolve, sep } from "path"
 import * as matcher from "../../src/utils/matcher"
 
 export namespace matcherTest {
@@ -77,7 +77,7 @@ export namespace matcherTest {
 		assert.strictEqual(matcher.match("foo", new matcher.Matcher([])), false)
 
 		assert.strictEqual(matcher.match("foo", "./"), true)
-		if (np.sep === "\\") {
+		if (sep === "\\") {
 			assert.strictEqual(matcher.match("E:\\foo", "E:\\foo"), true)
 			assert.strictEqual(matcher.match("E:\\foo\\goo.txt", "E:\\foo"), true)
 			assert.strictEqual(matcher.match("E:\\foo\\goo.txt", "E:\\foo\\*"), true)
@@ -259,72 +259,72 @@ export namespace matcherTest {
 		assert.strictEqual(matcher.match("a.,ts", "a.,ts"), true)
 		assert.strictEqual(matcher.match("{a}.ts", "{a}.ts", { noBrace: true }), true)
 		assert.strictEqual(matcher.match("x\\", "[x\\"), false)
-		assert.strictEqual(matcher.match(np.resolve("foo"), np.resolve("foo")), true)
-		assert.strictEqual(matcher.match(np.resolve("[]"), np.resolve("[]")), true)
+		assert.strictEqual(matcher.match(resolve("foo"), resolve("foo")), true)
+		assert.strictEqual(matcher.match(resolve("[]"), resolve("[]")), true)
 		assert.strictEqual(matcher.match("xa.js", "x\\a.js"), true)
 		assert.strictEqual(matcher.match("p[x].js", "p\\[x].js"), true)
 		assert.strictEqual(matcher.match("bdir/x/x", "bdir/[x]/\\x"), true)
 	}
 
 	export function baseTest() {
-		assert.strictEqual(new matcher.Matcher().base, np.resolve(".") + np.sep)
-		assert.strictEqual(new matcher.Matcher("foo").base, np.resolve("foo"))
-		assert.strictEqual(new matcher.Matcher("./foo").base, np.resolve("foo"))
-		assert.strictEqual(new matcher.Matcher("path/to/*.js").base, np.resolve("path/to"))
-		assert.strictEqual(new matcher.Matcher("./root/path/to/*.js").base, np.resolve("root/path/to"))
-		assert.strictEqual(new matcher.Matcher("./*.js").base, np.resolve(".") + np.sep)
-		assert.strictEqual(new matcher.Matcher("*.js").base, np.resolve(".") + np.sep)
-		assert.strictEqual(new matcher.Matcher("**/*.js").base, np.resolve(".") + np.sep)
-		assert.strictEqual(new matcher.Matcher("path/?").base, np.resolve("path/"))
-		assert.strictEqual(new matcher.Matcher("path/foo[ab]").base, np.resolve("path/"))
-		assert.strictEqual(new matcher.Matcher("path/*").base, np.resolve("path/"))
-		assert.strictEqual(new matcher.Matcher("path/foo*").base, np.resolve("path/"))
-		assert.strictEqual(new matcher.Matcher("path/**/*").base, np.resolve("path/"))
-		assert.strictEqual(new matcher.Matcher("path/**/subdir/foo.*").base, np.resolve("path"))
-		assert.strictEqual(new matcher.Matcher("foo/").base, np.resolve("foo") + np.sep)
-		assert.strictEqual(new matcher.Matcher(["foo/goo", "foo/foo"]).base, np.resolve("foo"))
-		assert.strictEqual(new matcher.Matcher(["foo/**/*.js", "foo/**/*.css"]).base, np.resolve("foo"))
-		assert.strictEqual(new matcher.Matcher(/foo/).base, np.resolve(""))
-		assert.strictEqual(new matcher.Matcher(["foo/", "!foo/"]).base, np.resolve("foo") + np.sep)
-		assert.strictEqual(new matcher.Matcher(["../foo/**/*.js", "foo/**/*.css"], { baseDir: "root" }).base, np.resolve("."))
-		assert.strictEqual(new matcher.Matcher(["../foo/**/*.js", /foo/], { baseDir: "root" }).base, np.resolve("."))
-		assert.strictEqual(new matcher.Matcher("./").base, np.resolve(".") + np.sep)
-		assert.strictEqual(new matcher.Matcher(".").base, np.resolve(".") + np.sep)
-		assert.strictEqual(new matcher.Matcher("").base, np.resolve(".") + np.sep)
-		assert.strictEqual(new matcher.Matcher("fo\\o").base, np.resolve("foo"))
-		assert.strictEqual(new matcher.Matcher(["fo\\o", () => true], { baseDir: "src" }).base, np.resolve("src"))
-		assert.strictEqual(new matcher.Matcher([1 as any], { baseDir: "src" }).base, np.resolve(".") + np.sep)
-		assert.strictEqual(new matcher.Matcher("/foo", { noAbsolute: true }).base, np.resolve("foo"))
+		assert.strictEqual(new matcher.Matcher().base, resolve(".") + sep)
+		assert.strictEqual(new matcher.Matcher("foo").base, resolve("foo"))
+		assert.strictEqual(new matcher.Matcher("./foo").base, resolve("foo"))
+		assert.strictEqual(new matcher.Matcher("path/to/*.js").base, resolve("path/to"))
+		assert.strictEqual(new matcher.Matcher("./root/path/to/*.js").base, resolve("root/path/to"))
+		assert.strictEqual(new matcher.Matcher("./*.js").base, resolve(".") + sep)
+		assert.strictEqual(new matcher.Matcher("*.js").base, resolve(".") + sep)
+		assert.strictEqual(new matcher.Matcher("**/*.js").base, resolve(".") + sep)
+		assert.strictEqual(new matcher.Matcher("path/?").base, resolve("path/"))
+		assert.strictEqual(new matcher.Matcher("path/foo[ab]").base, resolve("path/"))
+		assert.strictEqual(new matcher.Matcher("path/*").base, resolve("path/"))
+		assert.strictEqual(new matcher.Matcher("path/foo*").base, resolve("path/"))
+		assert.strictEqual(new matcher.Matcher("path/**/*").base, resolve("path/"))
+		assert.strictEqual(new matcher.Matcher("path/**/subdir/foo.*").base, resolve("path"))
+		assert.strictEqual(new matcher.Matcher("foo/").base, resolve("foo") + sep)
+		assert.strictEqual(new matcher.Matcher(["foo/goo", "foo/foo"]).base, resolve("foo"))
+		assert.strictEqual(new matcher.Matcher(["foo/**/*.js", "foo/**/*.css"]).base, resolve("foo"))
+		assert.strictEqual(new matcher.Matcher(/foo/).base, resolve(""))
+		assert.strictEqual(new matcher.Matcher(["foo/", "!foo/"]).base, resolve("foo") + sep)
+		assert.strictEqual(new matcher.Matcher(["../foo/**/*.js", "foo/**/*.css"], { baseDir: "root" }).base, resolve("."))
+		assert.strictEqual(new matcher.Matcher(["../foo/**/*.js", /foo/], { baseDir: "root" }).base, resolve("."))
+		assert.strictEqual(new matcher.Matcher("./").base, resolve(".") + sep)
+		assert.strictEqual(new matcher.Matcher(".").base, resolve(".") + sep)
+		assert.strictEqual(new matcher.Matcher("").base, resolve(".") + sep)
+		assert.strictEqual(new matcher.Matcher("fo\\o").base, resolve("foo"))
+		assert.strictEqual(new matcher.Matcher(["fo\\o", () => true], { baseDir: "src" }).base, resolve("src"))
+		assert.strictEqual(new matcher.Matcher([1 as any], { baseDir: "src" }).base, resolve(".") + sep)
+		assert.strictEqual(new matcher.Matcher("/foo", { noAbsolute: true }).base, resolve("foo"))
 	}
 
 	export function getBasesTest() {
 		assert.deepStrictEqual(new matcher.Matcher().getBases(), [])
-		assert.deepStrictEqual(new matcher.Matcher("foo").getBases(), [np.resolve("foo")])
-		assert.deepStrictEqual(new matcher.Matcher(["foo", "goo"]).getBases(), [np.resolve("foo"), np.resolve("goo")])
-		assert.deepStrictEqual(new matcher.Matcher(["foo", "foo/goo"]).getBases(), [np.resolve("foo")])
-		assert.deepStrictEqual(new matcher.Matcher(["foo/goo/hoo", "foo/goo/"]).getBases(), [np.resolve("foo/goo") + np.sep])
-		assert.deepStrictEqual(new matcher.Matcher(["foo/goo/hoo", "foo/goo"]).getBases(), [np.resolve("foo/goo")])
+		assert.deepStrictEqual(new matcher.Matcher("foo").getBases(), [resolve("foo")])
+		assert.deepStrictEqual(new matcher.Matcher(["foo", "goo"]).getBases(), [resolve("foo"), resolve("goo")])
+		assert.deepStrictEqual(new matcher.Matcher(["foo", "foo/goo"]).getBases(), [resolve("foo")])
+		assert.deepStrictEqual(new matcher.Matcher(["foo/goo/hoo", "foo/goo/"]).getBases(), [resolve("foo/goo") + sep])
+		assert.deepStrictEqual(new matcher.Matcher(["foo/goo/hoo", "foo/goo"]).getBases(), [resolve("foo/goo")])
 	}
 
 	export function baseOfTest() {
-		assert.strictEqual(new matcher.Matcher("foo").baseOf("foo/goo.js"), np.resolve("foo"))
-		assert.strictEqual(new matcher.Matcher(["foo", "goo"]).baseOf("foo/goo.js"), np.resolve("foo"), np.resolve("goo"))
-		assert.strictEqual(new matcher.Matcher(["foo", "foo/goo"]).baseOf("foo/goo.js"), np.resolve("foo"))
-		assert.strictEqual(new matcher.Matcher(["foo/goo/hoo", "foo/goo/"]).baseOf("foo/goo/hoo.js"), np.resolve("foo/goo") + np.sep)
-		assert.strictEqual(new matcher.Matcher(["foo/goo/hoo", "foo/goo"]).baseOf("foo/goo/hoo.js"), np.resolve("foo/goo"))
+		assert.strictEqual(new matcher.Matcher("foo").baseOf("foo/goo.js"), resolve("foo"))
+		assert.strictEqual(new matcher.Matcher(["foo", "goo"]).baseOf("foo/goo.js"), resolve("foo"), resolve("goo"))
+		assert.strictEqual(new matcher.Matcher(["foo", "foo/goo"]).baseOf("foo/goo.js"), resolve("foo"))
+		assert.strictEqual(new matcher.Matcher(["foo/goo/hoo", "foo/goo/"]).baseOf("foo/goo/hoo.js"), resolve("foo/goo") + sep)
+		assert.strictEqual(new matcher.Matcher(["foo/goo/hoo", "foo/goo"]).baseOf("foo/goo/hoo.js"), resolve("foo/goo"))
 	}
 
 	export function relativeTest() {
-		assert.strictEqual(new matcher.Matcher("src").relative(np.resolve("src/x.js")), "x.js")
-		assert.strictEqual(new matcher.Matcher("src/pages/").relative(np.resolve("src/pages/x.js")), "x.js")
-		assert.strictEqual(new matcher.Matcher("src/pages").relative(np.resolve("src/pages/x.js")), "x.js")
-		assert.strictEqual(new matcher.Matcher(["src/pages/", "src"]).relative(np.resolve("src/pages/x.js")), "x.js")
-		assert.strictEqual(new matcher.Matcher(["src/pages", "src"]).relative(np.resolve("src/pages/x.js")), "x.js")
-		assert.strictEqual(new matcher.Matcher(["src", "src/pages"]).relative(np.resolve("src/pages/x.js")), "x.js")
-		assert.strictEqual(new matcher.Matcher(["src", "src/pages/"]).relative(np.resolve("src/pages/x.js")), "x.js")
-		assert.strictEqual(new matcher.Matcher(["src", "src/pages/"]).relative(np.resolve("src/x.js")), "x.js")
-		assert.strictEqual(new matcher.Matcher(["src/pages/", "src"]).relative(np.resolve("src/x.js")), "x.js")
-		assert.strictEqual(new matcher.Matcher(["src/pages/", "src"]).relative(np.resolve("src")), "")
+		assert.strictEqual(new matcher.Matcher("src").relative(resolve("src/x.js")), "x.js")
+		assert.strictEqual(new matcher.Matcher("src/pages/").relative(resolve("src/pages/x.js")), "x.js")
+		assert.strictEqual(new matcher.Matcher("src/pages").relative(resolve("src/pages/x.js")), "x.js")
+		assert.strictEqual(new matcher.Matcher(["src/pages/", "src"]).relative(resolve("src/pages/x.js")), "x.js")
+		assert.strictEqual(new matcher.Matcher(["src/pages", "src"]).relative(resolve("src/pages/x.js")), "x.js")
+		assert.strictEqual(new matcher.Matcher(["src", "src/pages"]).relative(resolve("src/pages/x.js")), "x.js")
+		assert.strictEqual(new matcher.Matcher(["src", "src/pages/"]).relative(resolve("src/pages/x.js")), "x.js")
+		assert.strictEqual(new matcher.Matcher(["src", "src/pages/"]).relative(resolve("src/x.js")), "x.js")
+		assert.strictEqual(new matcher.Matcher(["src/pages/", "src"]).relative(resolve("src/x.js")), "x.js")
+		assert.strictEqual(new matcher.Matcher(["src/pages/", "src"]).relative(resolve("src")), "")
 	}
 
 	export function isGlobTest() {

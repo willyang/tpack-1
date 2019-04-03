@@ -1,6 +1,6 @@
-import * as np from "path"
-import { commonDir, containsPath as containsDir, relativePath, isCaseInsensitive } from "./path"
+import { isAbsolute, join, posix, resolve, sep } from "path"
 import { escapeRegExp } from "./misc"
+import { commonDir, containsPath, isCaseInsensitive, relativePath } from "./path"
 
 /**
  * 表示一个路径匹配器
@@ -49,14 +49,14 @@ export class Matcher {
 			}
 		} else if (pattern instanceof RegExp) {
 			this.patterns.push({
-				base: options && options.baseDir ? np.resolve(options.baseDir) : process.cwd(),
+				base: options && options.baseDir ? resolve(options.baseDir) : process.cwd(),
 				test(path) {
 					return pattern.test(relativePath(this.base, path))
 				}
 			})
 		} else if (typeof pattern === "function") {
 			this.patterns.push({
-				base: options && options.baseDir ? np.resolve(options.baseDir) : process.cwd(),
+				base: options && options.baseDir ? resolve(options.baseDir) : process.cwd(),
 				test: pattern
 			})
 		} else if (pattern instanceof Matcher) {
@@ -97,7 +97,7 @@ export class Matcher {
 	 */
 	get base() {
 		if (!this.patterns.length) {
-			return process.cwd() + np.sep
+			return process.cwd() + sep
 		}
 		let result: string | null = this.patterns[0].base
 		for (let i = 1; i < this.patterns.length; i++) {
@@ -115,10 +115,10 @@ export class Matcher {
 		outer: for (const pattern of this.patterns) {
 			const base = pattern.base
 			for (let j = 0; j < result.length; j++) {
-				if (containsDir(result[j], base, ignoreCase)) {
+				if (containsPath(result[j], base, ignoreCase)) {
 					continue outer
 				}
-				if (containsDir(base, result[j], ignoreCase)) {
+				if (containsPath(base, result[j], ignoreCase)) {
 					result[j] = base
 					continue outer
 				}
@@ -128,7 +128,7 @@ export class Matcher {
 		return result
 	}
 
-	/** 
+	/**
 	 * 获取匹配结果应使用的基路径，如果无可用路径则返回空
 	 * @param fullPath 要获取的绝对路径
 	 */
@@ -136,14 +136,14 @@ export class Matcher {
 		let result: string | undefined
 		for (let i = 0; i < this.patterns.length; i++) {
 			const base = this.patterns[i].base
-			if ((!result || base.length > result.length) && containsDir(base, fullPath)) {
+			if ((!result || base.length > result.length) && containsPath(base, fullPath)) {
 				result = base
 			}
 		}
 		return result
 	}
 
-	/** 
+	/**
 	 * 获取匹配结果应使用的相对路径，如果无可用路径则返回空
 	 * @param fullPath 要获取的绝对路径
 	 */
@@ -181,14 +181,14 @@ export class Matcher {
  * - `\`: 表示转义字符，如 `\[` 表示 `[` 作普通字符使用；Windows 中绝对路径中的 `\` 将作分隔符使用
  * - `!xyz`：如果通配符以 `!` 开头，表示排除匹配的项，注意如果排除了父文件夹，出于性能考虑，无法重新包含其中的子文件，设置 `noNegate: true` 后 `!` 只作普通字符使用
  * - `xyz/`：如果通配符以 `/` 结尾，表示只匹配文件夹
- * 
+ *
  * `*`、`**` 和 `?` 默认不匹配直接以 `.` 开头的路径，要允许匹配，可以写成 `.*`，或设置 `dot: true`
- * 
+ *
  * 如果通配符是一个绝对路径，则禁用所有特殊字符，直接匹配对应路径，设置 `noAbsolute: true` 后将不对绝对路径作特殊处理
- * 
+ *
  * 如果设置 `matchDir: true`，则只要匹配了根文件夹，也认为匹配了内部所有文件
  * 如果通配符中不存在 `*`、`**`、`?`、`[]` 和 `{}`，系统将默认设置 `matchDir: true`，所以 `src` 默认等价于 `src/**`
- * 
+ *
  * 如果设置 `matchBase: true`，则只要匹配了文件名，也认为匹配该文件
  * 如果通配符中存在 `*` 但不存在 `/`，系统将默认设置 `matchBase: true`，所以 `*.js` 默认等价于 `**\/*.js`
  *
@@ -298,30 +298,30 @@ function globToRegExp(pattern: string, options: PatternOptions) {
 	// 处理绝对路径
 	let glob = pattern
 	let baseDir: string
-	const isAbsolute = !options.noAbsolute && np.isAbsolute(glob)
-	if (isAbsolute) {
+	const abs = !options.noAbsolute && isAbsolute(glob)
+	if (abs) {
 		baseDir = ""
-		// Windows: 允许绝对路径使用 \ 作为分隔符，禁止 \ 作为转义字符 
-		if (np.sep !== "/") {
-			glob = glob.split(np.sep).join("/")
+		// Windows: 允许绝对路径使用 \ 作为分隔符，禁止 \ 作为转义字符
+		if (sep !== "/") {
+			glob = glob.split(sep).join("/")
 		}
 	} else {
-		baseDir = np.resolve(options.baseDir || ".")
+		baseDir = resolve(options.baseDir || ".")
 		if (glob.startsWith("/")) glob = "." + glob
 		// 删除多余的 ./ 和 ../
-		glob = np.posix.normalize(glob)
+		glob = posix.normalize(glob)
 		if (glob === "." || glob === "./") {
 			glob = ""
 		}
 		const match = /^(?:\.\.(\/|$))+/.exec(glob)
 		if (match) {
 			if (!options.noBack) {
-				baseDir = np.join(baseDir, match[0])
+				baseDir = join(baseDir, match[0])
 			}
 			glob = glob.slice(match[0].length)
 		}
-		if (!baseDir.endsWith(np.sep)) {
-			baseDir += np.sep
+		if (!baseDir.endsWith(sep)) {
+			baseDir += sep
 		}
 	}
 
@@ -338,7 +338,7 @@ function globToRegExp(pattern: string, options: PatternOptions) {
 				if (noSpecialChar) {
 					baseEnd = i
 				}
-				regexp += `\\${np.sep}`
+				regexp += `\\${sep}`
 				break
 			case 42 /***/:
 				noSpecialChar = false
@@ -346,21 +346,21 @@ function globToRegExp(pattern: string, options: PatternOptions) {
 				if (glob.charCodeAt(i + 1) === 42 /***/) {
 					i++
 					// 为了容错，将 p** 翻译为 p*/**，将 **p 翻译为 **/*p，将 p**q 翻译为 p*/**/*q
-					regexp += `${isStart ? "" : `[^\\${np.sep}]*`}(?:(?=[^${options.dot ? "" : "\\."}])[^\\${np.sep}]*${i < glob.length - 1 ? `\\${np.sep}` : `(?:\\${np.sep}|$)`})*`
+					regexp += `${isStart ? "" : `[^\\${sep}]*`}(?:(?=[^${options.dot ? "" : "\\."}])[^\\${sep}]*${i < glob.length - 1 ? `\\${sep}` : `(?:\\${sep}|$)`})*`
 					if (glob.charCodeAt(i + 1) === 47 /*/*/) {
 						i++
 					} else {
-						regexp += `${options.dot ? "" : "(?!\\.)"}[^\\${np.sep}]*`
+						regexp += `${options.dot ? "" : "(?!\\.)"}[^\\${sep}]*`
 					}
 				} else {
 					hasStar = true
 					// 如果是 /*/ 则 * 至少需匹配一个字符
-					regexp += `${isStart && !options.dot ? "(?!\\.)" : ""}[^\\${np.sep}]${isStart && (i === glob.length - 1 || glob.charCodeAt(i + 1) === 47 /*/*/) ? "+" : "*"}`
+					regexp += `${isStart && !options.dot ? "(?!\\.)" : ""}[^\\${sep}]${isStart && (i === glob.length - 1 || glob.charCodeAt(i + 1) === 47 /*/*/) ? "+" : "*"}`
 				}
 				break
 			case 63 /*?*/:
 				noSpecialChar = false
-				regexp += `[^\\${np.sep}${options.dot || i > 0 && glob.charCodeAt(i - 1) !== 47 /*/*/ ? "" : "\\."}]`
+				regexp += `[^\\${sep}${options.dot || i > 0 && glob.charCodeAt(i - 1) !== 47 /*/*/ ? "" : "\\."}]`
 				break
 			case 92 /*\*/:
 				if (noSpecialChar) {
@@ -370,7 +370,7 @@ function globToRegExp(pattern: string, options: PatternOptions) {
 				break
 			case 91 /*[*/:
 				// 不处理绝对路径的 [] 字符
-				if (!isAbsolute && !options.noBracket) {
+				if (!abs && !options.noBracket) {
 					// 查找配对的 ]，如果找不到按普通字符处理
 					let classes = ""
 					let hasRange = false
@@ -418,7 +418,7 @@ function globToRegExp(pattern: string, options: PatternOptions) {
 				regexp += "\\["
 				break
 			case 123 /*{*/:
-				if (isAbsolute || options.noBrace) {
+				if (abs || options.noBrace) {
 					regexp += "\\{"
 				} else {
 					noSpecialChar = false
@@ -449,9 +449,9 @@ function globToRegExp(pattern: string, options: PatternOptions) {
 		regexp += ")"
 		openBrace--
 	}
-	regexp = (!isAbsolute && (options.matchBase === undefined ? hasStar && pattern.indexOf("/") < 0 : options.matchBase) ? `(?:^|\\${np.sep})` : `^${escapeRegExp(baseDir)}`) + regexp
+	regexp = (!abs && (options.matchBase === undefined ? hasStar && pattern.indexOf("/") < 0 : options.matchBase) ? `(?:^|\\${sep})` : `^${escapeRegExp(baseDir)}`) + regexp
 	if (glob && !glob.endsWith("/")) {
-		regexp += (options.matchDir === undefined ? noSpecialChar : options.matchDir) ? `(?:$|\\${np.sep})` : `$`
+		regexp += (options.matchDir === undefined ? noSpecialChar : options.matchDir) ? `(?:$|\\${sep})` : `$`
 	}
 
 	// 生成正则
@@ -460,7 +460,7 @@ function globToRegExp(pattern: string, options: PatternOptions) {
 	if (hasEscapeChar) {
 		basePart = basePart.replace(/\\(.)/g, "$1")
 	}
-	result.base = np.join(baseDir, basePart)
+	result.base = join(baseDir, basePart)
 	return result
 }
 
@@ -471,7 +471,7 @@ function globToRegExp(pattern: string, options: PatternOptions) {
  * @param options 模式的选项
  */
 export function match(value: string, pattern: Pattern, options?: PatternOptions) {
-	value = np.resolve(value) + (value.endsWith(np.sep) || value.endsWith("/") || !value || value === "." ? np.sep : "")
+	value = resolve(value) + (value.endsWith(sep) || value.endsWith("/") || !value || value === "." ? sep : "")
 	return new Matcher(pattern, options).test(value)
 }
 
@@ -481,7 +481,7 @@ export function match(value: string, pattern: Pattern, options?: PatternOptions)
  * @param options 模式的选项
  */
 export function isGlob(pattern: string, options: Pick<PatternOptions, "noAbsolute" | "noNegate" | "noBrace" | "noBracket"> = {}) {
-	if (!options.noAbsolute && np.isAbsolute(pattern)) {
+	if (!options.noAbsolute && isAbsolute(pattern)) {
 		return false
 	}
 	if (!options.noBracket && /\[[^\]]+\]/.test(pattern)) {

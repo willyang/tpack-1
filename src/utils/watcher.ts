@@ -1,6 +1,6 @@
 import { EventEmitter } from "events"
-import * as nfs from "fs"
-import * as np from "path"
+import { FSWatcher, readdir, stat, Stats, unwatchFile, watch, watchFile } from "fs"
+import { join, resolve } from "path"
 import { containsPath } from "./path"
 
 /**
@@ -16,66 +16,66 @@ export class Watcher extends EventEmitter {
 
 	// #region 监听事件
 
-    /**
-     * 判断是否忽略指定的路径
-     * @param path 要判断的文件或文件夹绝对路径
-     */
+	/**
+	 * 判断是否忽略指定的路径
+	 * @param path 要判断的文件或文件夹绝对路径
+	 */
 	protected ignored(path: string) { return false }
 
-    /**
-     * 当监听到文件删除后执行
-     * @param path 相关的文件绝对路径
-     * @param lastWriteTime 文件被删除前最后一次的修改时间
-     */
+	/**
+	 * 当监听到文件删除后执行
+	 * @param path 相关的文件绝对路径
+	 * @param lastWriteTime 文件被删除前最后一次的修改时间
+	 */
 	protected onDelete(path: string, lastWriteTime: number) { this.emit("delete", path, lastWriteTime) }
 
-    /**
-     * 当监听到文件夹删除后执行
-     * @param path 相关的文件夹绝对路径
-     * @param lastEntries 文件夹被删除前最后一次的文件列表
-     */
+	/**
+	 * 当监听到文件夹删除后执行
+	 * @param path 相关的文件夹绝对路径
+	 * @param lastEntries 文件夹被删除前最后一次的文件列表
+	 */
 	protected onDeleteDir(path: string, lastEntries: string[]) { this.emit("deleteDir", path, lastEntries) }
 
-    /**
-     * 当监听到文件创建后执行
-     * @param path 相关的文件绝对路径
-     * @param stats 文件属性对象
-     */
-	protected onCreate(path: string, stats: nfs.Stats) { this.emit("create", path, stats) }
+	/**
+	 * 当监听到文件创建后执行
+	 * @param path 相关的文件绝对路径
+	 * @param stats 文件属性对象
+	 */
+	protected onCreate(path: string, stats: Stats) { this.emit("create", path, stats) }
 
-    /**
-     * 当监听到文件夹创建后执行
-     * @param path 相关的文件夹绝对路径
-     * @param entries 文件夹内的文件列表
-     */
+	/**
+	 * 当监听到文件夹创建后执行
+	 * @param path 相关的文件夹绝对路径
+	 * @param entries 文件夹内的文件列表
+	 */
 	protected onCreateDir(path: string, entries: string[]) { this.emit("createDir", path, entries) }
 
-    /**
-     * 当监听到文件改变后执行
-     * @param path 相关的文件绝对路径
-     * @param stats 相关的文件属性对象
-     * @param lastWriteTime 文件的最新修改时间
-     */
-	protected onChange(path: string, stats: nfs.Stats, lastWriteTime: number) { this.emit("change", path, stats, lastWriteTime) }
+	/**
+	 * 当监听到文件改变后执行
+	 * @param path 相关的文件绝对路径
+	 * @param stats 相关的文件属性对象
+	 * @param lastWriteTime 文件的最新修改时间
+	 */
+	protected onChange(path: string, stats: Stats, lastWriteTime: number) { this.emit("change", path, stats, lastWriteTime) }
 
-    /**
-     * 当监听发生错误后执行
-     * @param error 相关的错误对象
-     * @param path 相关的文件绝对路径
-     */
+	/**
+	 * 当监听发生错误后执行
+	 * @param error 相关的错误对象
+	 * @param path 相关的文件绝对路径
+	 */
 	protected onError(error: NodeJS.ErrnoException, path: string) { this.emit("error", error, path) }
 
 	// #endregion
 
 	// #region 添加和删除
 
-    /**
-     * 添加要监听的文件或文件夹
-     * @param path 要添加的文件或文件夹路径
-     * @param callback 开始监听的回调函数
-     */
+	/**
+	 * 添加要监听的文件或文件夹
+	 * @param path 要添加的文件或文件夹路径
+	 * @param callback 开始监听的回调函数
+	 */
 	add(path: string, callback?: (error: NodeJS.ErrnoException | null, path: string) => void) {
-		path = np.resolve(path)
+		path = resolve(path)
 		this._initStats(path, error => {
 			if (this.watchOptions.recursive) {
 				for (const key in this._watchers) {
@@ -121,12 +121,12 @@ export class Watcher extends EventEmitter {
 		})
 	}
 
-    /**
-     * 删除指定路径的监听器
-     * @param path 要删除的文件或文件夹路径
-     */
+	/**
+	 * 删除指定路径的监听器
+	 * @param path 要删除的文件或文件夹路径
+	 */
 	remove(path: string) {
-		path = np.resolve(path)
+		path = resolve(path)
 		if (this.watchOptions.recursive) {
 			if (path in this._watchers) {
 				this.removeNativeWatcher(path)
@@ -143,10 +143,10 @@ export class Watcher extends EventEmitter {
 		}
 	}
 
-    /**
-     * 删除所有监听器
-     * @param callback 删除完成后的回调函数
-     */
+	/**
+	 * 删除所有监听器
+	 * @param callback 删除完成后的回调函数
+	 */
 	close(callback?: () => void) {
 		for (const path in this._watchers) {
 			this.removeNativeWatcher(path)
@@ -166,9 +166,9 @@ export class Watcher extends EventEmitter {
 		}
 	}
 
-    /**
-     * 判断当前监听器是否正在监听
-     */
+	/**
+	 * 判断当前监听器是否正在监听
+	 */
 	get isWatching() {
 		for (const _ in this._watchers) {
 			return true
@@ -183,11 +183,11 @@ export class Watcher extends EventEmitter {
 	/** 存储所有原生监听器对象 */
 	private _watchers: { [path: string]: NativeFSWatcher } = { __proto__: null! }
 
-    /**
-     * 创建指定路径的原生监听器
-     * @param path 要监听的文件或文件夹绝对路径
-     * @param root 标记当前监听器是否是根监听器
-     */
+	/**
+	 * 创建指定路径的原生监听器
+	 * @param path 要监听的文件或文件夹绝对路径
+	 * @param root 标记当前监听器是否是根监听器
+	 */
 	protected createNativeWatcher(path: string, root: boolean) {
 		const isFile = typeof this._stats[path] === "number"
 		const polling = this.usePolling != undefined ? this.usePolling : isFile
@@ -196,18 +196,18 @@ export class Watcher extends EventEmitter {
 			const listener = () => {
 				this.handleWatchChange("change", path, true)
 			}
-			nfs.watchFile(path, this.watchOptions, listener)
+			watchFile(path, this.watchOptions, listener)
 			watcher = {
 				close() {
-					nfs.unwatchFile(path, listener)
+					unwatchFile(path, listener)
 				}
 			} as NativeFSWatcher
 		} else {
-			watcher = nfs.watch(path, this.watchOptions, isFile ? event => {
+			watcher = watch(path, this.watchOptions, isFile ? event => {
 				this.handleWatchChange(event as "rename" | "change", path, true)
 			} : (event, fileName) => {
 				if (fileName) {
-					this.handleWatchChange(event as "rename" | "change", np.join(path, fileName instanceof Buffer ? fileName.toString() : fileName), true)
+					this.handleWatchChange(event as "rename" | "change", join(path, fileName instanceof Buffer ? fileName.toString() : fileName), true)
 				} else {
 					this.handleWatchChange(event as "rename" | "change", path, false)
 				}
@@ -240,21 +240,21 @@ export class Watcher extends EventEmitter {
 
 	}
 
-    /**
-     * 删除原生监听器
-     * @param path 要删除监听的文件或文件夹绝对路径
-     */
+	/**
+	 * 删除原生监听器
+	 * @param path 要删除监听的文件或文件夹绝对路径
+	 */
 	protected removeNativeWatcher(path: string) {
 		this._watchers[path].close()
 		delete this._watchers[path]
 	}
 
-    /**
-     * 处理原生监听更改事件
-     * @param event 发生事件的名称
-     * @param path 发生改变的文件或文件夹绝对路径
-     * @param force 是否强制更新所在路径本身
-     */
+	/**
+	 * 处理原生监听更改事件
+	 * @param event 发生事件的名称
+	 * @param path 发生改变的文件或文件夹绝对路径
+	 * @param force 是否强制更新所在路径本身
+	 */
 	protected handleWatchChange(event: "rename" | "change" | "retry", path: string, force: boolean) {
 		if (this.ignored(path)) {
 			return
@@ -270,10 +270,10 @@ export class Watcher extends EventEmitter {
 		}
 	}
 
-    /**
-     * 获取或设置监听延时回调的毫秒数
-     * @desc 设置一定的延时可以避免在短时间内重复处理相同的文件
-     */
+	/**
+	 * 获取或设置监听延时回调的毫秒数
+	 * @desc 设置一定的延时可以避免在短时间内重复处理相同的文件
+	 */
 	delay = 151
 
 	/** 判断或设置是否采用轮询的方案 */
@@ -285,10 +285,10 @@ export class Watcher extends EventEmitter {
 	/** 存储等待解析已挂起的更改的计时器 */
 	private _resolveChangesTimer?: any
 
-    /**
-     * 解析所有已挂起的更改文件
-     * @param watcher 目标监听器
-     */
+	/**
+	 * 解析所有已挂起的更改文件
+	 * @param watcher 目标监听器
+	 */
 	private static _resolveChanges(watcher: Watcher) {
 		delete watcher._resolveChangesTimer
 		for (const pendingChange of watcher._pendingChanges) {
@@ -301,20 +301,20 @@ export class Watcher extends EventEmitter {
 		watcher._pendingChanges.length = 0
 	}
 
-    /**
-     * 存储所有状态对象，对象的键是绝对路径
-     * 如果路径是一个文件夹，则值为所有直接子文件和子文件夹的名称数组
-     * 如果路径是一个文件，则值为文件的最后修改时间
-     */
+	/**
+	 * 存储所有状态对象，对象的键是绝对路径
+	 * 如果路径是一个文件夹，则值为所有直接子文件和子文件夹的名称数组
+	 * 如果路径是一个文件，则值为文件的最后修改时间
+	 */
 	private _stats: { [path: string]: string[] | number } = { __proto__: null! }
 
-    /**
-     * 初始化指定文件或文件夹及子文件的状态对象
-     * @param path 要初始化的文件或文件夹绝对路径
-     * @param callback 初始化完成的回调函数
-     * @param stats 当前路径的属性对象，提供此参数可避免重新查询
-     */
-	private _initStats(path: string, callback: (error: NodeJS.ErrnoException | null) => void, stats?: nfs.Stats) {
+	/**
+	 * 初始化指定文件或文件夹及子文件的状态对象
+	 * @param path 要初始化的文件或文件夹绝对路径
+	 * @param callback 初始化完成的回调函数
+	 * @param stats 当前路径的属性对象，提供此参数可避免重新查询
+	 */
+	private _initStats(path: string, callback: (error: NodeJS.ErrnoException | null) => void, stats?: Stats) {
 		const oldStats = this._stats[path]
 		if (oldStats != undefined) {
 			if (typeof oldStats === "object") {
@@ -324,7 +324,7 @@ export class Watcher extends EventEmitter {
 			}
 		} else if (!stats) {
 			this._pending++
-			nfs.stat(path, (error, stats) => {
+			stat(path, (error, stats) => {
 				if (error) {
 					callback(error)
 				} else {
@@ -339,7 +339,7 @@ export class Watcher extends EventEmitter {
 			callback(null)
 		} else if (stats.isDirectory()) {
 			this._pending++
-			nfs.readdir(path, (error, entries) => {
+			readdir(path, (error, entries) => {
 				if (!error) {
 					this._stats[path] = entries
 					this._initDirStats(path, callback, entries)
@@ -361,12 +361,12 @@ export class Watcher extends EventEmitter {
 		}
 	}
 
-    /**
-     * 初始化指定文件夹及子文件的状态对象
-     * @param path 要初始化的文件夹绝对路径
-     * @param callback 初始化完成的回调函数
-     * @param entries 当前路文件夹的项
-     */
+	/**
+	 * 初始化指定文件夹及子文件的状态对象
+	 * @param path 要初始化的文件夹绝对路径
+	 * @param callback 初始化完成的回调函数
+	 * @param entries 当前路文件夹的项
+	 */
 	private _initDirStats(path: string, callback: (error: NodeJS.ErrnoException | null) => void, entries: string[]) {
 		let pending = entries.length
 		if (!pending) {
@@ -374,7 +374,7 @@ export class Watcher extends EventEmitter {
 		} else {
 			let firstError: NodeJS.ErrnoException | null = null
 			for (const entry of entries) {
-				const child = np.join(path, entry)
+				const child = join(path, entry)
 				if (!this.ignored(child)) {
 					this._initStats(child, error => {
 						firstError = firstError || error
@@ -392,13 +392,13 @@ export class Watcher extends EventEmitter {
 	/** 存储正在执行的异步任务数 */
 	private _pending = 0
 
-    /**
-     * 更新指定文件的状态对象
-     * @param path 要更新的文件绝对路径
-     */
+	/**
+	 * 更新指定文件的状态对象
+	 * @param path 要更新的文件绝对路径
+	 */
 	private _updateFileStats(path: string) {
 		this._pending++
-		nfs.stat(path, (error, stats) => {
+		stat(path, (error, stats) => {
 			if (error) {
 				if (error.code === "ENOENT") {
 					this._removeStats(path)
@@ -429,13 +429,13 @@ export class Watcher extends EventEmitter {
 		})
 	}
 
-    /**
-     * 更新指定文件夹的状态对象
-     * @param path 要更新的文件夹绝对路径
-     */
+	/**
+	 * 更新指定文件夹的状态对象
+	 * @param path 要更新的文件夹绝对路径
+	 */
 	private _updateDirStats(path: string) {
 		this._pending++
-		nfs.readdir(path, (error, entries) => {
+		readdir(path, (error, entries) => {
 			if (error) {
 				if (error.code === "ENOENT") {
 					this._removeStats(path)
@@ -458,7 +458,7 @@ export class Watcher extends EventEmitter {
 				if (typeof prevStats === "object") {
 					for (const entry of prevStats) {
 						if (entries.indexOf(entry) < 0) {
-							this._removeStats(np.join(path, entry))
+							this._removeStats(join(path, entry))
 						}
 					}
 					this._stats[path] = entries
@@ -470,7 +470,7 @@ export class Watcher extends EventEmitter {
 					this.onCreateDir(path, entries)
 				}
 				for (const entry of entries) {
-					const child = np.join(path, entry)
+					const child = join(path, entry)
 					if (!this.ignored(child)) {
 						const childStats = this._stats[child]
 						if (typeof childStats !== "object") {
@@ -485,10 +485,10 @@ export class Watcher extends EventEmitter {
 		})
 	}
 
-    /**
-     * 删除指定文件或文件夹及子文件的状态对象
-     * @param path 要删除的文件或文件夹绝对路径
-     */
+	/**
+	 * 删除指定文件或文件夹及子文件的状态对象
+	 * @param path 要删除的文件或文件夹绝对路径
+	 */
 	private _removeStats(path: string) {
 		const prevStats = this._stats[path]
 		if (prevStats != undefined) {
@@ -501,7 +501,7 @@ export class Watcher extends EventEmitter {
 					this.removeNativeWatcher(path)
 				}
 				for (const entry of prevStats) {
-					this._removeStats(np.join(path, entry))
+					this._removeStats(join(path, entry))
 				}
 				this.onDeleteDir(path, prevStats)
 			}
@@ -514,74 +514,72 @@ export class Watcher extends EventEmitter {
 
 export interface Watcher {
 
-    /**
-     * 绑定一个文件删除事件
-     * @param event 要绑定的事件名
-     * @param listener 要绑定的事件监听器
-     * * @param path 相关的文件绝对路径
-     * * @param lastWriteTime 最后修改时间
-     */
+	/**
+	 * 绑定一个文件删除事件
+	 * @param event 要绑定的事件名
+	 * @param listener 要绑定的事件监听器
+	 * * @param path 相关的文件绝对路径
+	 * * @param lastWriteTime 最后修改时间
+	 */
 	on(event: "delete", listener: (path: string, lastWriteTime: number) => void): this
 
-    /**
-     * 绑定一个文件夹删除事件
-     * @param event 要绑定的事件名
-     * @param listener 要绑定的事件监听器
-     * * @param path 相关的文件夹绝对路径
-     * * @param lastEntries 最后文件列表
-     */
+	/**
+	 * 绑定一个文件夹删除事件
+	 * @param event 要绑定的事件名
+	 * @param listener 要绑定的事件监听器
+	 * * @param path 相关的文件夹绝对路径
+	 * * @param lastEntries 最后文件列表
+	 */
 	on(event: "deleteDir", listener: (path: string, lastEntries: string[]) => void): this
 
-    /**
-     * 绑定一个文件创建事件
-     * @param event 要绑定的事件名
-     * @param listener 要绑定的事件监听器
-     * * @param path 相关的文件绝对路径
-     * * @param stats 文件属性对象
-     */
-	on(event: "create", listener: (path: string, stats: nfs.Stats) => void): this
+	/**
+	 * 绑定一个文件创建事件
+	 * @param event 要绑定的事件名
+	 * @param listener 要绑定的事件监听器
+	 * * @param path 相关的文件绝对路径
+	 * * @param stats 文件属性对象
+	 */
+	on(event: "create", listener: (path: string, stats: Stats) => void): this
 
-    /**
-     * 绑定一个文件夹删除事件
-     * @param event 要绑定的事件名
-     * @param listener 要绑定的事件监听器
-     * * @param path 相关的文件夹绝对路径
-     * * @param entries 文件列表
-     */
+	/**
+	 * 绑定一个文件夹删除事件
+	 * @param event 要绑定的事件名
+	 * @param listener 要绑定的事件监听器
+	 * * @param path 相关的文件夹绝对路径
+	 * * @param entries 文件列表
+	 */
 	on(event: "createDir", listener: (path: string, entries: string[]) => void): this
 
-    /**
-     * 绑定一个文件改变事件
-     * @param event 要绑定的事件名
-     * @param listener 要绑定的事件监听器
-     * * @param path 相关的文件绝对路径
-     * * @param stats 相关的文件属性对象
-     * * @param lastWriteTime 最后修改时间
-     */
-	on(event: "change", listener: (path: string, stats: nfs.Stats, lastWriteTime: number) => void): this
+	/**
+	 * 绑定一个文件改变事件
+	 * @param event 要绑定的事件名
+	 * @param listener 要绑定的事件监听器
+	 * * @param path 相关的文件绝对路径
+	 * * @param stats 相关的文件属性对象
+	 * * @param lastWriteTime 最后修改时间
+	 */
+	on(event: "change", listener: (path: string, stats: Stats, lastWriteTime: number) => void): this
 
-    /**
-     * 绑定一个错误事件
-     * @param event 要绑定的事件名
-     * @param listener 要绑定的事件监听器
-     * * @param error 相关的错误对象
-     * * @param path 相关的文件绝对路径
-     */
+	/**
+	 * 绑定一个错误事件
+	 * @param event 要绑定的事件名
+	 * @param listener 要绑定的事件监听器
+	 * * @param error 相关的错误对象
+	 * * @param path 相关的文件绝对路径
+	 */
 	on(event: "error", listener: (error: NodeJS.ErrnoException, path: string) => void): this
 
-    /**
-     * 绑定一个事件
-     * @param event 要绑定的事件名
-     * @param listener 要绑定的事件监听器
-     */
+	/**
+	 * 绑定一个事件
+	 * @param event 要绑定的事件名
+	 * @param listener 要绑定的事件监听器
+	 */
 	on(event: string | symbol, listener: Function): this
 
 }
 
 /** 表示一个原生监听器 */
-interface NativeFSWatcher extends nfs.FSWatcher {
-
+interface NativeFSWatcher extends FSWatcher {
 	/** 判断当前监听器是否是顶级监听器 */
 	root: boolean
-
 }

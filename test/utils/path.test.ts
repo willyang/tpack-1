@@ -1,5 +1,5 @@
 import * as assert from "assert"
-import * as np from "path"
+import { resolve, sep } from "path"
 import * as path from "../../src/utils/path"
 
 export namespace pathTest {
@@ -8,56 +8,56 @@ export namespace pathTest {
 		assert.strictEqual(path.resolvePath(""), process.cwd())
 		assert.strictEqual(path.resolvePath("."), process.cwd())
 		assert.strictEqual(path.resolvePath("goo/.."), process.cwd())
-		assert.strictEqual(path.resolvePath(".foo"), process.cwd() + np.sep + ".foo")
-		assert.strictEqual(path.resolvePath("foo"), process.cwd() + np.sep + "foo")
-		assert.strictEqual(path.resolvePath("goo/../foo/goo.txt"), process.cwd() + np.sep + "foo" + np.sep + "goo.txt")
+		assert.strictEqual(path.resolvePath(".foo"), process.cwd() + sep + ".foo")
+		assert.strictEqual(path.resolvePath("foo"), process.cwd() + sep + "foo")
+		assert.strictEqual(path.resolvePath("goo/../foo/goo.txt"), process.cwd() + sep + "foo" + sep + "goo.txt")
 
 		assert.strictEqual(path.resolvePath("./"), process.cwd())
 		assert.strictEqual(path.resolvePath("goo/../"), process.cwd())
-		assert.strictEqual(path.resolvePath(".foo/"), process.cwd() + np.sep + ".foo")
-		assert.strictEqual(path.resolvePath("foo/"), process.cwd() + np.sep + "foo")
-		assert.strictEqual(path.resolvePath("goo/../foo/goo.txt/"), process.cwd() + np.sep + "foo" + np.sep + "goo.txt")
+		assert.strictEqual(path.resolvePath(".foo/"), process.cwd() + sep + ".foo")
+		assert.strictEqual(path.resolvePath("foo/"), process.cwd() + sep + "foo")
+		assert.strictEqual(path.resolvePath("goo/../foo/goo.txt/"), process.cwd() + sep + "foo" + sep + "goo.txt")
 
 		assert.strictEqual(path.resolvePath("", ""), process.cwd())
 		assert.strictEqual(path.resolvePath("", "."), process.cwd())
 		assert.strictEqual(path.resolvePath("", "goo/.."), process.cwd())
-		assert.strictEqual(path.resolvePath("", ".foo"), process.cwd() + np.sep + ".foo")
-		assert.strictEqual(path.resolvePath("", "foo"), process.cwd() + np.sep + "foo")
-		assert.strictEqual(path.resolvePath("", "goo/../foo/goo.txt"), process.cwd() + np.sep + "foo" + np.sep + "goo.txt")
+		assert.strictEqual(path.resolvePath("", ".foo"), process.cwd() + sep + ".foo")
+		assert.strictEqual(path.resolvePath("", "foo"), process.cwd() + sep + "foo")
+		assert.strictEqual(path.resolvePath("", "goo/../foo/goo.txt"), process.cwd() + sep + "foo" + sep + "goo.txt")
 
 		assert.strictEqual(path.resolvePath(".", ""), process.cwd())
 		assert.strictEqual(path.resolvePath(".", "."), process.cwd())
 		assert.strictEqual(path.resolvePath(".", "goo/.."), process.cwd())
-		assert.strictEqual(path.resolvePath(".", ".foo"), process.cwd() + np.sep + ".foo")
-		assert.strictEqual(path.resolvePath(".", "foo"), process.cwd() + np.sep + "foo")
-		assert.strictEqual(path.resolvePath(".", "goo/../foo/goo.txt"), process.cwd() + np.sep + "foo" + np.sep + "goo.txt")
+		assert.strictEqual(path.resolvePath(".", ".foo"), process.cwd() + sep + ".foo")
+		assert.strictEqual(path.resolvePath(".", "foo"), process.cwd() + sep + "foo")
+		assert.strictEqual(path.resolvePath(".", "goo/../foo/goo.txt"), process.cwd() + sep + "foo" + sep + "goo.txt")
 
 		assert.strictEqual(path.resolvePath("./", ""), process.cwd())
 		assert.strictEqual(path.resolvePath("./", "."), process.cwd())
 		assert.strictEqual(path.resolvePath("./", "goo/.."), process.cwd())
-		assert.strictEqual(path.resolvePath("./", ".foo"), process.cwd() + np.sep + ".foo")
-		assert.strictEqual(path.resolvePath("./", "foo"), process.cwd() + np.sep + "foo")
-		assert.strictEqual(path.resolvePath("./", "goo/../foo/goo.txt"), process.cwd() + np.sep + "foo" + np.sep + "goo.txt")
+		assert.strictEqual(path.resolvePath("./", ".foo"), process.cwd() + sep + ".foo")
+		assert.strictEqual(path.resolvePath("./", "foo"), process.cwd() + sep + "foo")
+		assert.strictEqual(path.resolvePath("./", "goo/../foo/goo.txt"), process.cwd() + sep + "foo" + sep + "goo.txt")
 
-		assert.strictEqual(path.resolvePath("foo", ""), process.cwd() + np.sep + "foo")
-		assert.strictEqual(path.resolvePath("foo", "."), process.cwd() + np.sep + "foo")
+		assert.strictEqual(path.resolvePath("foo", ""), process.cwd() + sep + "foo")
+		assert.strictEqual(path.resolvePath("foo", "."), process.cwd() + sep + "foo")
 		assert.strictEqual(path.resolvePath("foo", ".."), process.cwd())
-		assert.strictEqual(path.resolvePath("foo", ".goo"), process.cwd() + np.sep + "foo" + np.sep + ".goo")
-		assert.strictEqual(path.resolvePath("foo", "goo"), process.cwd() + np.sep + "foo" + np.sep + "goo")
-		assert.strictEqual(path.resolvePath("foo", "../goo/hoo.txt"), process.cwd() + np.sep + "goo" + np.sep + "hoo.txt")
+		assert.strictEqual(path.resolvePath("foo", ".goo"), process.cwd() + sep + "foo" + sep + ".goo")
+		assert.strictEqual(path.resolvePath("foo", "goo"), process.cwd() + sep + "foo" + sep + "goo")
+		assert.strictEqual(path.resolvePath("foo", "../goo/hoo.txt"), process.cwd() + sep + "goo" + sep + "hoo.txt")
 
-		assert.strictEqual(path.resolvePath("foo/", ""), process.cwd() + np.sep + "foo")
-		assert.strictEqual(path.resolvePath("foo/", "."), process.cwd() + np.sep + "foo")
+		assert.strictEqual(path.resolvePath("foo/", ""), process.cwd() + sep + "foo")
+		assert.strictEqual(path.resolvePath("foo/", "."), process.cwd() + sep + "foo")
 		assert.strictEqual(path.resolvePath("foo/", ".."), process.cwd())
-		assert.strictEqual(path.resolvePath("foo/", ".goo"), process.cwd() + np.sep + "foo" + np.sep + ".goo")
-		assert.strictEqual(path.resolvePath("foo/", "goo"), process.cwd() + np.sep + "foo" + np.sep + "goo")
-		assert.strictEqual(path.resolvePath("foo/", "../goo/hoo.txt"), process.cwd() + np.sep + "goo" + np.sep + "hoo.txt")
+		assert.strictEqual(path.resolvePath("foo/", ".goo"), process.cwd() + sep + "foo" + sep + ".goo")
+		assert.strictEqual(path.resolvePath("foo/", "goo"), process.cwd() + sep + "foo" + sep + "goo")
+		assert.strictEqual(path.resolvePath("foo/", "../goo/hoo.txt"), process.cwd() + sep + "goo" + sep + "hoo.txt")
 
-		assert.strictEqual(path.resolvePath("goo/../foo/goo", "../hoo/koo"), process.cwd() + np.sep + "foo" + np.sep + "hoo" + np.sep + "koo")
-		assert.strictEqual(path.resolvePath("goo/../foo/goo/", "../hoo/koo/"), process.cwd() + np.sep + "foo" + np.sep + "hoo" + np.sep + "koo")
-		assert.strictEqual(path.resolvePath("goo/../foo/goo.txt", "../hoo/koo.txt"), process.cwd() + np.sep + "foo" + np.sep + "hoo" + np.sep + "koo.txt")
+		assert.strictEqual(path.resolvePath("goo/../foo/goo", "../hoo/koo"), process.cwd() + sep + "foo" + sep + "hoo" + sep + "koo")
+		assert.strictEqual(path.resolvePath("goo/../foo/goo/", "../hoo/koo/"), process.cwd() + sep + "foo" + sep + "hoo" + sep + "koo")
+		assert.strictEqual(path.resolvePath("goo/../foo/goo.txt", "../hoo/koo.txt"), process.cwd() + sep + "foo" + sep + "hoo" + sep + "koo.txt")
 
-		if (np.sep === "\\") {
+		if (sep === "\\") {
 			assert.strictEqual(path.resolvePath("C:\\Windows\\System32", "b"), "C:\\Windows\\System32\\b")
 			assert.strictEqual(path.resolvePath("C:\\Windows\\System32\\", "b"), "C:\\Windows\\System32\\b")
 			assert.strictEqual(path.resolvePath("C:\\Windows/System32", "b\\d"), "C:\\Windows\\System32\\b\\d")
@@ -116,7 +116,7 @@ export namespace pathTest {
 		assert.strictEqual(path.relativePath("foo/goo/", "foo/goo/"), "")
 		assert.strictEqual(path.relativePath("foo/goo/", "foo/goo/hoo/koo.txt/"), "hoo/koo.txt")
 
-		assert.strictEqual(path.relativePath(process.cwd(), np.resolve("foo/goo.txt")), "foo/goo.txt")
+		assert.strictEqual(path.relativePath(process.cwd(), resolve("foo/goo.txt")), "foo/goo.txt")
 	}
 
 	export function normalizePathTest() {
@@ -128,13 +128,13 @@ export namespace pathTest {
 		assert.strictEqual(path.normalizePath("../"), "../")
 		assert.strictEqual(path.normalizePath("foo.js"), "foo.js")
 		assert.strictEqual(path.normalizePath("./foo.js"), "foo.js")
-		assert.strictEqual(path.normalizePath("/foo.js"), np.sep + "foo.js")
+		assert.strictEqual(path.normalizePath("/foo.js"), sep + "foo.js")
 		assert.strictEqual(path.normalizePath("foo/../goo.js"), "goo.js")
-		assert.strictEqual(path.normalizePath("/foo/../goo.js"), np.sep + "goo.js")
+		assert.strictEqual(path.normalizePath("/foo/../goo.js"), sep + "goo.js")
 		assert.strictEqual(path.normalizePath("**/*.js"), "**/*.js")
 		assert.strictEqual(path.normalizePath("./**/*.js"), "**/*.js")
 		assert.strictEqual(path.normalizePath("./fixtures///d/../b/c.js"), "fixtures/b/c.js")
-		assert.strictEqual(path.normalizePath("/foo/../../../bar"), np.sep + "bar")
+		assert.strictEqual(path.normalizePath("/foo/../../../bar"), sep + "bar")
 		assert.strictEqual(path.normalizePath("foo//goo//../koo"), "foo/koo")
 		assert.strictEqual(path.normalizePath("foo//goo//./koo"), "foo/goo/koo")
 		assert.strictEqual(path.normalizePath("foo//goo//."), "foo/goo")
@@ -142,7 +142,7 @@ export namespace pathTest {
 		assert.strictEqual(path.normalizePath("p/a/b/c/../../../x/y/z"), "p/x/y/z")
 		assert.strictEqual(path.normalizePath("a/b/c/../../../x/y/z"), "x/y/z")
 
-		if (np.sep === "\\") {
+		if (sep === "\\") {
 			assert.strictEqual(path.normalizePath("c:/../a/b/c"), "c:\\a\\b\\c")
 			assert.strictEqual(path.normalizePath("C:\\Windows\\System32"), "C:\\Windows\\System32")
 		}
@@ -157,7 +157,7 @@ export namespace pathTest {
 		assert.strictEqual(path.isAbsolutePath("bar/"), false)
 		assert.strictEqual(path.isAbsolutePath("./baz"), false)
 
-		if (np.sep === "\\") {
+		if (sep === "\\") {
 			assert.strictEqual(path.isAbsolutePath("\\\\server\\file"), true)
 			assert.strictEqual(path.isAbsolutePath("\\\\server"), true)
 			assert.strictEqual(path.isAbsolutePath("\\\\"), true)
@@ -187,7 +187,7 @@ export namespace pathTest {
 		assert.strictEqual(path.setDir("/user/root/foo", ""), "foo")
 		assert.strictEqual(path.setDir("/user/root/foo", "."), "foo")
 		assert.strictEqual(path.setDir("/user/root/foo", "./"), "foo")
-		assert.strictEqual(path.setDir("/user/root/foo", "/"), np.sep + "foo")
+		assert.strictEqual(path.setDir("/user/root/foo", "/"), sep + "foo")
 		assert.strictEqual(path.setDir("/user/root/foo.txt", "goo"), "goo/foo.txt")
 		assert.strictEqual(path.setDir("/user/root/foo", "goo"), "goo/foo")
 		assert.strictEqual(path.setDir("/user/root/foo", "goo/"), "goo/foo")
@@ -196,7 +196,7 @@ export namespace pathTest {
 		assert.strictEqual(path.setDir("/user/root/foo", "", "/user/root"), "foo")
 		assert.strictEqual(path.setDir("/user/root/foo", ".", "/user/root"), "foo")
 		assert.strictEqual(path.setDir("/user/root/foo", "./", "/user/root"), "foo")
-		assert.strictEqual(path.setDir("/user/root/foo", "/", "/user/root"), np.sep + "foo")
+		assert.strictEqual(path.setDir("/user/root/foo", "/", "/user/root"), sep + "foo")
 		assert.strictEqual(path.setDir("/user/root/foo.txt", "goo", "/user/root"), "goo/foo.txt")
 		assert.strictEqual(path.setDir("/user/root/foo", "goo", "/user/root"), "goo/foo")
 		assert.strictEqual(path.setDir("/user/root/foo", "goo/", "/user/root"), "goo/foo")
@@ -329,41 +329,41 @@ export namespace pathTest {
 	}
 
 	export function commonDirTest() {
-		assert.strictEqual(path.commonDir("", ""), np.resolve("."))
-		assert.strictEqual(path.commonDir("", "."), np.resolve("."))
-		assert.strictEqual(path.commonDir(".", "."), np.resolve("."))
-		assert.strictEqual(path.commonDir(".", "foo"), np.resolve("."))
-		assert.strictEqual(path.commonDir(".", "foo/goo"), np.resolve("."))
-		assert.strictEqual(path.commonDir("goo1/.", "goo1/.."), np.resolve("."))
-		assert.strictEqual(path.commonDir("goo1/.", "goo1/../foo/goo"), np.resolve("."))
+		assert.strictEqual(path.commonDir("", ""), resolve("."))
+		assert.strictEqual(path.commonDir("", "."), resolve("."))
+		assert.strictEqual(path.commonDir(".", "."), resolve("."))
+		assert.strictEqual(path.commonDir(".", "foo"), resolve("."))
+		assert.strictEqual(path.commonDir(".", "foo/goo"), resolve("."))
+		assert.strictEqual(path.commonDir("goo1/.", "goo1/.."), resolve("."))
+		assert.strictEqual(path.commonDir("goo1/.", "goo1/../foo/goo"), resolve("."))
 
-		assert.strictEqual(path.commonDir("goo1/..", "goo1/."), np.resolve("."))
-		assert.strictEqual(path.commonDir("goo1/..", "goo1/.."), np.resolve("."))
-		assert.strictEqual(path.commonDir("goo1/..", "goo1/foo"), np.resolve("."))
-		assert.strictEqual(path.commonDir("goo1/..", "goo1/foo/goo"), np.resolve("."))
-		assert.strictEqual(path.commonDir("goo1/..", "goo1/../foo/goo"), np.resolve("."))
+		assert.strictEqual(path.commonDir("goo1/..", "goo1/."), resolve("."))
+		assert.strictEqual(path.commonDir("goo1/..", "goo1/.."), resolve("."))
+		assert.strictEqual(path.commonDir("goo1/..", "goo1/foo"), resolve("."))
+		assert.strictEqual(path.commonDir("goo1/..", "goo1/foo/goo"), resolve("."))
+		assert.strictEqual(path.commonDir("goo1/..", "goo1/../foo/goo"), resolve("."))
 
-		assert.strictEqual(path.commonDir("foo/goo", "foo/goo2"), np.resolve("foo"))
-		assert.strictEqual(path.commonDir("foo/goo", "foo/goo/hoo"), np.resolve("foo/goo"))
-		assert.strictEqual(path.commonDir("foo/goo/hoo", "foo/goo/hoo2"), np.resolve("foo/goo"))
+		assert.strictEqual(path.commonDir("foo/goo", "foo/goo2"), resolve("foo"))
+		assert.strictEqual(path.commonDir("foo/goo", "foo/goo/hoo"), resolve("foo/goo"))
+		assert.strictEqual(path.commonDir("foo/goo/hoo", "foo/goo/hoo2"), resolve("foo/goo"))
 
-		assert.strictEqual(path.commonDir("foo/goo/hoo", "foo/goo"), np.resolve("foo/goo"))
-		assert.strictEqual(path.commonDir("foo/goo/hoo", "foo2/goo/hoo"), np.resolve("."))
-		assert.strictEqual(path.commonDir("foo/goo/hoo", "foo/goo/hoo"), np.resolve("foo/goo/hoo"))
+		assert.strictEqual(path.commonDir("foo/goo/hoo", "foo/goo"), resolve("foo/goo"))
+		assert.strictEqual(path.commonDir("foo/goo/hoo", "foo2/goo/hoo"), resolve("."))
+		assert.strictEqual(path.commonDir("foo/goo/hoo", "foo/goo/hoo"), resolve("foo/goo/hoo"))
 
-		assert.strictEqual(path.commonDir("/", "/"), np.resolve("/"))
-		assert.strictEqual(path.commonDir("/foo/goo", "/foo/goo2"), np.resolve("/foo"))
+		assert.strictEqual(path.commonDir("/", "/"), resolve("/"))
+		assert.strictEqual(path.commonDir("/foo/goo", "/foo/goo2"), resolve("/foo"))
 
-		assert.strictEqual(path.commonDir("goo/../foo", "goo/../foo2"), np.resolve("."))
-		assert.strictEqual(path.commonDir("goo/../foo", "goo/../foo/goo"), np.resolve("foo"))
-		assert.strictEqual(path.commonDir("goo/../foo", "goo/foo2/goo"), np.resolve("."))
-		assert.strictEqual(path.commonDir("goo/../foo", "goo/."), np.resolve("."))
+		assert.strictEqual(path.commonDir("goo/../foo", "goo/../foo2"), resolve("."))
+		assert.strictEqual(path.commonDir("goo/../foo", "goo/../foo/goo"), resolve("foo"))
+		assert.strictEqual(path.commonDir("goo/../foo", "goo/foo2/goo"), resolve("."))
+		assert.strictEqual(path.commonDir("goo/../foo", "goo/."), resolve("."))
 
 		assert.strictEqual(path.commonDir(null, ""), null)
 		assert.strictEqual(path.commonDir("", null), null)
 		assert.strictEqual(path.commonDir(null, null), null)
 
-		if (np.sep === "\\") {
+		if (sep === "\\") {
 			assert.strictEqual(path.commonDir("R:/foo", "H:/foo"), null)
 			assert.strictEqual(path.commonDir("R:", "H:"), null)
 		}

@@ -1,8 +1,8 @@
-import * as nfs from "fs"
-import * as np from "path"
+import { appendFile, constants, copyFile, link, lstat, mkdir, readdir, readFile, readlink, realpath, rename, rmdir, stat, Stats, symlink, unlink, writeFile } from "fs"
+import { dirname, join } from "path"
+import { Matcher, Pattern, PatternOptions } from "./matcher"
 import { escapeRegExp } from "./misc"
 import { isCaseInsensitive } from "./path"
-import { PatternOptions, Pattern, Matcher } from "./matcher"
 
 /** 表示一个文件系统 */
 export class FileSystem {
@@ -15,8 +15,8 @@ export class FileSystem {
 	 * @param path 要获取的路径
 	 */
 	getStat(path: string) {
-		return new Promise<nfs.Stats>((resolve, reject) => {
-			nfs.stat(path, (error, stats) => {
+		return new Promise<Stats>((resolve, reject) => {
+			stat(path, (error, stats) => {
 				if (error) {
 					reject(error)
 				} else {
@@ -31,8 +31,8 @@ export class FileSystem {
 	 * @param path 要获取的路径
 	 */
 	getLinkStat(path: string) {
-		return new Promise<nfs.Stats>((resolve, reject) => {
-			nfs.lstat(path, (error, stats) => {
+		return new Promise<Stats>((resolve, reject) => {
+			lstat(path, (error, stats) => {
 				if (error) {
 					reject(error)
 				} else {
@@ -42,7 +42,7 @@ export class FileSystem {
 		})
 	}
 
-	/** 
+	/**
 	 * 判断指定的文件是否存在
 	 * @param path 要判断的路径
 	 */
@@ -57,7 +57,7 @@ export class FileSystem {
 		}
 	}
 
-	/** 
+	/**
 	 * 判断指定的文件夹是否存在
 	 * @param path 要判断的路径
 	 */
@@ -103,7 +103,7 @@ export class FileSystem {
 	 * @returns 如果文件夹创建成功则返回 `true`，否则说明文件夹已存在，返回 `false`
 	 */
 	ensureDirExists(path: string) {
-		return this.createDir(np.dirname(path))
+		return this.createDir(dirname(path))
 	}
 
 	/**
@@ -113,7 +113,7 @@ export class FileSystem {
 	 */
 	createDir(path: string) {
 		return new Promise<boolean>((resolve, reject) => {
-			nfs.mkdir(path, 0o777 & ~process.umask(), error => {
+			mkdir(path, 0o777 & ~process.umask(), error => {
 				if (error) {
 					switch (error.code) {
 						case "ENOENT":
@@ -127,7 +127,7 @@ export class FileSystem {
 							break
 						case "EEXIST":
 							// 路径已存在，测试是否是文件夹
-							nfs.stat(path, (error2, stats) => {
+							stat(path, (error2, stats) => {
 								if (error2 || !stats.isDirectory()) {
 									reject(error)
 								} else {
@@ -154,7 +154,7 @@ export class FileSystem {
 	 */
 	deleteDir(path: string, recursive = true) {
 		return new Promise<number>((resolve, reject) => {
-			nfs.rmdir(path, error => {
+			rmdir(path, error => {
 				if (error) {
 					switch (error.code) {
 						case "ENOENT":
@@ -192,7 +192,7 @@ export class FileSystem {
 	 */
 	cleanDir(path: string) {
 		return new Promise<number>((resolve, reject) => {
-			safeCall(nfs.readdir, [path], (error, entries: string[]) => {
+			safeCall(readdir, [path], (error, entries: string[]) => {
 				if (error) {
 					if (error.code === "ENOENT") {
 						resolve(0)
@@ -204,8 +204,8 @@ export class FileSystem {
 					if (pending) {
 						let count = 0
 						for (const entry of entries) {
-							const child = np.join(path, entry)
-							nfs.lstat(child, async (error, stats) => {
+							const child = join(path, entry)
+							lstat(child, async (error, stats) => {
 								if (error) {
 									reject(error)
 								} else {
@@ -240,12 +240,12 @@ export class FileSystem {
 	 * @returns 如果删除成功则返回 `true`，否则说明文件夹不空，返回 `false`
 	 */
 	deleteParentDirIfEmpty(path: string) {
-		const parent = np.dirname(path)
+		const parent = dirname(path)
 		if (parent === path) {
 			return Promise.resolve(false)
 		}
 		return new Promise<boolean>(resolve => {
-			nfs.rmdir(parent, error => {
+			rmdir(parent, error => {
 				if (error) {
 					resolve(false)
 				} else {
@@ -264,7 +264,7 @@ export class FileSystem {
 	 */
 	deleteFile(path: string) {
 		return new Promise<boolean>((resolve, reject) => {
-			nfs.unlink(path, error => {
+			unlink(path, error => {
 				if (error) {
 					switch (error.code) {
 						case "ENOENT":
@@ -293,19 +293,19 @@ export class FileSystem {
 
 			function walk(path: string) {
 				pending++
-				(options.follow ? nfs.stat : nfs.lstat)(path, (error, stats) => {
+				(options.follow ? stat : lstat)(path, (error, stats) => {
 					if (error) {
 						options.error && options.error(error, path)
 					} else if (stats.isFile()) {
 						options.file && options.file(path, stats)
 					} else if (stats.isDirectory()) {
 						if (!options.dir || options.dir(path, stats) !== false) {
-							return safeCall(nfs.readdir, [path], (error, entries) => {
+							return safeCall(readdir, [path], (error, entries) => {
 								if (error) {
 									options.error && options.error(error, path)
 								} else if (!options.scan || options.scan(path, entries, stats) !== false) {
 									for (const entry of entries) {
-										walk(np.join(path, entry))
+										walk(join(path, entry))
 									}
 								}
 								if (--pending < 1) {
@@ -350,7 +350,7 @@ export class FileSystem {
 	 */
 	readDir(path: string) {
 		return new Promise<string[]>((resolve, reject) => {
-			safeCall(nfs.readdir, [path], (error, entries) => {
+			safeCall(readdir, [path], (error, entries) => {
 				if (error) {
 					reject(error)
 				} else {
@@ -382,7 +382,7 @@ export class FileSystem {
 
 	readFile(path: string, encoding?: string | boolean, throwOnNotFound?: boolean) {
 		return new Promise<string | Buffer | null>((resolve, reject) => {
-			safeCall(nfs.readFile, [path, encoding], (error, entries) => {
+			safeCall(readFile, [path, encoding], (error, entries) => {
 				if (error) {
 					if (throwOnNotFound === false && error.code === "ENOENT") {
 						resolve(null)
@@ -405,7 +405,7 @@ export class FileSystem {
 	 */
 	writeFile(path: string, data: string | Buffer, overwrite = true) {
 		return new Promise<boolean>((resolve, reject) => {
-			safeCall(nfs.writeFile, [path, data, overwrite ? undefined : { flag: "wx" }], error => {
+			safeCall(writeFile, [path, data, overwrite ? undefined : { flag: "wx" }], error => {
 				if (error) {
 					switch (error.code) {
 						case "ENOENT":
@@ -440,7 +440,7 @@ export class FileSystem {
 	 */
 	appendFile(path: string, data: string | Buffer) {
 		return new Promise<void>((resolve, reject) => {
-			safeCall(nfs.appendFile, [path, data], error => {
+			safeCall(appendFile, [path, data], error => {
 				if (error) {
 					switch (error.code) {
 						case "ENOENT":
@@ -470,7 +470,7 @@ export class FileSystem {
 	 */
 	createLink(path: string, target: string, overwrite = true) {
 		return new Promise<boolean>((resolve, reject) => {
-			nfs.lstat(target, (error, stats) => {
+			lstat(target, (error, stats) => {
 				const done = (error: NodeJS.ErrnoException | null) => {
 					if (error) {
 						switch (error.code) {
@@ -503,9 +503,9 @@ export class FileSystem {
 					}
 				}
 				if (error || stats.isDirectory()) {
-					nfs.symlink(target, path, "junction", done)
+					symlink(target, path, "junction", done)
 				} else {
-					nfs.link(target, path, done)
+					link(target, path, done)
 				}
 			})
 		})
@@ -517,7 +517,7 @@ export class FileSystem {
 	 */
 	readLink(path: string) {
 		return new Promise<string>((resolve, reject) => {
-			safeCall(nfs.readlink, [path], (error, link) => {
+			safeCall(readlink, [path], (error, link) => {
 				if (error) {
 					reject(error)
 				} else {
@@ -537,7 +537,7 @@ export class FileSystem {
 	copyDir(src: string, dest: string, overwrite = true) {
 		return new Promise<number>((resolve, reject) => {
 			this.createDir(dest).then(() => {
-				safeCall(nfs.readdir, [src], (error, entries: string[]) => {
+				safeCall(readdir, [src], (error, entries: string[]) => {
 					if (error) {
 						reject(error)
 					} else {
@@ -546,9 +546,9 @@ export class FileSystem {
 							let count = 0
 							let firstError: NodeJS.ErrnoException
 							for (const entry of entries) {
-								const fromChild = np.join(src, entry)
-								const toChild = np.join(dest, entry)
-								nfs.lstat(fromChild, async (error, stats) => {
+								const fromChild = join(src, entry)
+								const toChild = join(dest, entry)
+								lstat(fromChild, async (error, stats) => {
 									if (error) {
 										firstError = firstError || error
 									} else {
@@ -596,7 +596,7 @@ export class FileSystem {
 	 */
 	copyFile(src: string, dest: string, overwrite = true) {
 		return new Promise<boolean>((resolve, reject) => {
-			safeCall(nfs.copyFile, [src, dest, overwrite ? undefined : nfs.constants.COPYFILE_EXCL], error => {
+			safeCall(copyFile, [src, dest, overwrite ? undefined : constants.COPYFILE_EXCL], error => {
 				if (error) {
 					switch (error.code) {
 						case "ENOENT":
@@ -645,7 +645,7 @@ export class FileSystem {
 	moveDir(src: string, dest: string, overwrite = true) {
 		return new Promise<number>((resolve, reject) => {
 			this.createDir(dest).then(() => {
-				safeCall(nfs.readdir, [src], (error, entries: string[]) => {
+				safeCall(readdir, [src], (error, entries: string[]) => {
 					if (error) {
 						reject(error)
 					} else {
@@ -654,9 +654,9 @@ export class FileSystem {
 							let count = 0
 							let firstError: NodeJS.ErrnoException
 							for (const entry of entries) {
-								const fromChild = np.join(src, entry)
-								const toChild = np.join(dest, entry)
-								nfs.lstat(fromChild, async (error, stats) => {
+								const fromChild = join(src, entry)
+								const toChild = join(dest, entry)
+								lstat(fromChild, async (error, stats) => {
 									if (error) {
 										firstError = firstError || error
 									} else {
@@ -715,7 +715,7 @@ export class FileSystem {
 	moveFile(src: string, dest: string, overwrite = true) {
 		return new Promise<boolean>((resolve, reject) => {
 			if (overwrite) {
-				nfs.rename(src, dest, error => {
+				rename(src, dest, error => {
 					if (error) {
 						this.copyFile(src, dest).then(() => {
 							this.deleteFile(src).then(() => {
@@ -763,7 +763,7 @@ export class FileSystem {
 	 */
 	getRealPath(path: string) {
 		return new Promise<string | null>((resolve, reject) => {
-			safeCall(nfs.realpath.native, [path], (error, link) => {
+			safeCall(realpath.native, [path], (error, link) => {
 				if (error) {
 					if (error.code === "ENOENT") {
 						resolve(null)
@@ -797,14 +797,14 @@ export interface WalkOptions {
 	 * @param path 当前文件的路径
 	 * @param stats 当前文件的属性对象
 	 */
-	file?(path: string, stats: nfs.Stats): void
+	file?(path: string, stats: Stats): void
 
 	/**
 	 * 处理一个文件夹的回调函数，如果函数返回 `false` 则跳过遍历此文件夹
 	 * @param path 当前文件夹的路径
 	 * @param stats 当前文件夹的属性对象
 	 */
-	dir?(path: string, stats: nfs.Stats): boolean | void
+	dir?(path: string, stats: Stats): boolean | void
 
 	/**
 	 * 即将遍历指定的文件夹时的回调函数，如果函数返回 `false` 则跳过遍历此文件夹
@@ -812,14 +812,14 @@ export interface WalkOptions {
 	 * @param entries 当前文件夹下的所有项
 	 * @param stats 当前文件夹的属性对象
 	 */
-	scan?(path: string, entries: string[], stats: nfs.Stats): boolean | void
+	scan?(path: string, entries: string[], stats: Stats): boolean | void
 
 	/**
 	 * 处理一个其它类型文件的回调函数
 	 * @param path 当前文件的路径
 	 * @param stats 当前文件的属性对象
 	 */
-	other?(path: string, stats: nfs.Stats): void
+	other?(path: string, stats: Stats): void
 
 }
 

@@ -34,7 +34,7 @@ export function transformESModuleToCommonJS(code: string) {
 			}
 			if (exportNames) {
 				exportNames = exportNames.replace(/([a-zA-Z0-9_$\xAA-\uDDEF]\s*)\bas\b/g, "$1:")
-				return `const ${exportNames} = require(${fromModule});Object.assign(module.exports, ${exportNames});`
+				return `const ${exportNames} = require(${fromModule}); Object.assign(module.exports, ${exportNames});`
 			}
 			return `require(${fromModule});`
 		}

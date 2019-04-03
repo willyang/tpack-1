@@ -1,34 +1,37 @@
-import * as np from "path"
+import { basename, dirname, extname, isAbsolute, join, normalize, relative, resolve, sep } from "path"
 
 /**
- * 解析指定路径对应的绝对路径，路径末尾多余的分隔符会被删除
+ * 解析指定路径对应的绝对路径
  * @param paths 要解析的路径
+ * @returns 返回以 `/`(非 Windows) 或 `\`(Windows) 为分隔符的绝对路径，路径末尾多余的分隔符会被删除
  * @example resolvePath("foo/goo/hoo", "../relative")
  */
 export function resolvePath(...paths: string[]) {
-	return np.resolve(...paths)
+	return resolve(...paths)
 }
 
 /**
- * 解析指定路径对应的相对路径，路径固定以 `/` 作为分隔符，路径末尾多余的分隔符会被删除
+ * 解析指定路径对应的相对路径
  * @param base 要解析的基路径
  * @param path 要解析的路径
+ * @returns 返回以 `/` 为分隔符的相对路径，路径末尾多余的分隔符会被删除
  * @example relativePath("foo/goo/hoo", "foo/goo/relative") // "../relative"
  */
 export function relativePath(base: string, path: string) {
-	path = np.relative(base, path)
-	return np.sep === "/" ? path : path.split(np.sep).join("/")
+	path = relative(base, path)
+	return sep === "/" ? path : path.split(sep).join("/")
 }
 
 /**
- * 规范化指定的路径格式，路径中多余的 `./` 和 `../` 会被删除，路径固定以 `/` 作为分隔符，路径末尾多余的分隔符会被保留
+ * 规范化指定的路径格式
  * @param path 要处理的路径
+ * @returns 如果路径是绝对路径，返回以 `/`(非 Windows) 或 `\`(Windows) 为分隔符的绝对路径，否则返回以 `/` 为分隔符的相对路径，路径末尾多余的分隔符会被保留
  * @example normalizePath("foo/") // "foo/"
  * @example normalizePath("./foo.js") // "foo.js"
  */
 export function normalizePath(path: string) {
-	path = np.normalize(path)
-	return np.sep === "/" || isAbsolutePath(path) ? path : path.split(np.sep).join("/")
+	path = normalize(path)
+	return sep === "/" || isAbsolute(path) ? path : path.split(sep).join("/")
 }
 
 /**
@@ -37,7 +40,7 @@ export function normalizePath(path: string) {
  * @example isAbsolutePath("foo") // false
  */
 export function isAbsolutePath(path: string) {
-	return np.isAbsolute(path)
+	return isAbsolute(path)
 }
 
 /**
@@ -46,20 +49,21 @@ export function isAbsolutePath(path: string) {
  * @example getDir("/root/foo.txt") // "/root/"
  */
 export function getDir(path: string) {
-	return np.dirname(path)
+	return dirname(path)
 }
 
 /**
  * 设置指定路径的文件夹部分
  * @param path 要处理的路径
  * @param value 要设置的新文件夹路径
- * @param base 原文件夹路径
+ * @param base 如果提供了原文件夹路径，则保留文件在原文件夹内的路径
+ * @returns 如果新文件夹路径是绝对路径，返回以 `/`(非 Windows) 或 `\`(Windows) 为分隔符的绝对路径，否则返回以 `/` 为分隔符的相对路径
  * @example setDir("/root/foo.txt", "goo") // "goo/foo.txt"
  * @example setDir("/root/goo/foo.txt", "/user", "/root") // "/user/goo/foo.txt"
  */
 export function setDir(path: string, value: string, base?: string) {
-	path = np.join(value, base ? np.relative(base, path) : np.basename(path))
-	return np.sep === "/" || isAbsolutePath(path) ? path : path.split(np.sep).join("/")
+	path = join(value, base ? relative(base, path) : basename(path))
+	return sep === "/" || isAbsolutePath(path) ? path : path.split(sep).join("/")
 }
 
 /**
@@ -70,7 +74,7 @@ export function setDir(path: string, value: string, base?: string) {
  * @example getFileName("/root/foo.txt", false) // "foo"
  */
 export function getFileName(path: string, includeExt = true) {
-	return np.basename(path, includeExt ? undefined : np.extname(path))
+	return basename(path, includeExt ? undefined : extname(path))
 }
 
 /**
@@ -82,8 +86,8 @@ export function getFileName(path: string, includeExt = true) {
  * @example setFileName("/root/foo.txt", "goo", false) // "/root/goo.jpg"
  */
 export function setFileName(path: string, value: string, includeExt = true) {
-	const base = np.basename(path)
-	return path.slice(0, path.lastIndexOf(base)) + value + (includeExt ? "" : np.extname(base))
+	const base = basename(path)
+	return path.slice(0, path.lastIndexOf(base)) + value + (includeExt ? "" : extname(base))
 }
 
 /**
@@ -103,7 +107,7 @@ export function prependFileName(path: string, value: string) {
  * @example appendFileName("foo/goo.src.txt", "_fix") // "foo/goo_fix.src.txt"
  */
 export function appendFileName(path: string, value: string) {
-	const base = np.basename(path)
+	const base = basename(path)
 	const dot = base.indexOf(".")
 	return path.slice(0, path.lastIndexOf(base)) + (dot < 0 ? base : base.substr(0, dot)) + value + (dot < 0 ? "" : base.substr(dot))
 }
@@ -115,7 +119,7 @@ export function appendFileName(path: string, value: string) {
  * @example getExt(".gitignore") // ""
  */
 export function getExt(path: string) {
-	return np.extname(path)
+	return extname(path)
 }
 
 /**
@@ -127,7 +131,7 @@ export function getExt(path: string) {
  * @example setExt("/root/foo", ".jpg") // "/root/foo.jpg"
  */
 export function setExt(path: string, value: string) {
-	return path.substr(0, path.length - np.extname(path).length) + value
+	return path.substr(0, path.length - extname(path).length) + value
 }
 
 /**
@@ -146,8 +150,8 @@ export function pathEquals(path1: string | undefined | null, path2: string | und
 	if (path1 == null || path2 == null) {
 		return path1 === path2
 	}
-	path1 = np.resolve(path1)
-	path2 = np.resolve(path2)
+	path1 = resolve(path1)
+	path2 = resolve(path2)
 	if (path1.length !== path2.length) {
 		return false
 	}
@@ -159,7 +163,7 @@ export function pathEquals(path1: string | undefined | null, path2: string | und
 }
 
 /**
- * 判断文件夹是否包含指定的路径
+ * 判断指定的文件夹是否包含另一个文件或文件夹
  * @param parent 要判断的父文件夹路径
  * @param child 要判断的子文件或文件夹路径
  * @param ignoreCase 是否忽略路径的大小写
@@ -167,8 +171,8 @@ export function pathEquals(path1: string | undefined | null, path2: string | und
  * @example containsPath("/root/foo", "/root/goo") // false
  */
 export function containsPath(parent: string, child: string, ignoreCase = isCaseInsensitive) {
-	parent = np.resolve(parent)
-	child = np.resolve(child)
+	parent = resolve(parent)
+	child = resolve(child)
 	if (child.length < parent.length) {
 		return false
 	}
@@ -179,25 +183,26 @@ export function containsPath(parent: string, child: string, ignoreCase = isCaseI
 	if (child.length === parent.length) {
 		return child === parent
 	}
-	if (parent.charAt(parent.length - 1) !== np.sep) {
-		parent += np.sep
+	if (parent.charAt(parent.length - 1) !== sep) {
+		parent += sep
 	}
 	return child.startsWith(parent)
 }
 
 /**
- * 获取两个路径中的公共文件夹的绝对路径，如果没有公共部分则返回空
+ * 获取两个路径的公共文件夹
  * @param path1 要处理的第一个路径
  * @param path2 要处理的第二个路径
  * @param ignoreCase 是否忽略路径的大小写
+ * @returns 返回以 `/`(非 Windows) 或 `\`(Windows) 为分隔符的绝对路径，如果没有公共部分则返回空
  * @example commonDir("/root/foo", "/root/foo/goo") // "/root/foo"
  */
 export function commonDir(path1: string | null, path2: string | null, ignoreCase = isCaseInsensitive) {
 	if (path1 == null || path2 == null) {
 		return null
 	}
-	path1 = np.resolve(path1)
-	path2 = np.resolve(path2)
+	path1 = resolve(path1)
+	path2 = resolve(path2)
 	// 确保 path1.length <= path2.length
 	if (path1.length > path2.length) {
 		[path1, path2] = [path2, path1]
@@ -205,7 +210,7 @@ export function commonDir(path1: string | null, path2: string | null, ignoreCase
 	// 计算相同的开头部分，以分隔符为界
 	let index = -1
 	let i = 0
-	const sepCode = np.sep.charCodeAt(0)
+	const sepCode = sep.charCodeAt(0)
 	for (; i < path1.length; i++) {
 		let ch1 = path1.charCodeAt(i)
 		let ch2 = path2.charCodeAt(i)

@@ -14,7 +14,7 @@ export namespace esmTest {
 		assert.strictEqual(esm.transformESModuleToCommonJS(`export function * a() {}`), `function * a() {}\nmodule.exports.a = a;`)
 		assert.strictEqual(esm.transformESModuleToCommonJS(`export function *a() {}`), `function *a() {}\nmodule.exports.a = a;`)
 		assert.strictEqual(esm.transformESModuleToCommonJS(`export async function *a() {}`), `async function *a() {}\nmodule.exports.a = a;`)
-		
+
 		assert.strictEqual(esm.transformESModuleToCommonJS(`export default 1`), `module.exports.default = 1\nObject.defineProperty(module.exports, "__esModule", { value: true });`)
 		assert.strictEqual(esm.transformESModuleToCommonJS(`export default var a`), `var a\nObject.defineProperty(module.exports, "__esModule", { value: true });\nmodule.exports.default = a;`)
 
@@ -25,7 +25,7 @@ export namespace esmTest {
 		assert.strictEqual(esm.transformESModuleToCommonJS(`import {readFile} from "fs"`), `const {readFile} = require("fs");`)
 		assert.strictEqual(esm.transformESModuleToCommonJS(`import {readFile as read} from "fs"`), `const {readFile : read} = require("fs");`)
 		assert.strictEqual(esm.transformESModuleToCommonJS(`import {readFile as read, writeFile} from "fs"`), `const {readFile : read, writeFile} = require("fs");`)
-		
+
 		assert.strictEqual(esm.transformESModuleToCommonJS(`import fs from "fs"`), `const __fs = require("fs"), fs = __fs.__esModule ? __fs.default : __fs;`)
 		assert.strictEqual(esm.transformESModuleToCommonJS(`import fs, {readFile} from "fs"`), `const __fs = require("fs"), fs = __fs.__esModule ? __fs.default : __fs, {readFile} = __fs;`)
 	}

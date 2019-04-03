@@ -1,4 +1,4 @@
-import { SpawnOptions, ChildProcess, spawn } from "child_process"
+import { ChildProcess, spawn, SpawnOptions } from "child_process"
 
 /**
  * 执行一个命令

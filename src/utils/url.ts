@@ -1,5 +1,5 @@
-import * as np from "path"
-import * as nu from "url"
+import { posix } from "path"
+import { format, parse, resolve } from "url"
 
 /**
  * 解析指定地址对应的绝对地址
@@ -8,13 +8,13 @@ import * as nu from "url"
  * @example resolveURL("a/b/c", "../d") // "a/d"
  */
 export function resolveURL(base: string, url: string) {
-	return nu.resolve(base, url)
+	return resolve(base, url)
 }
 
 /**
  * 解析指定地址对应的相对地址
  * @param base 要解析的基地址
- * @param url 要解析的相对地址或绝对地址
+ * @param url 要解析的绝对地址
  * @example relativeURL("a/b/c", "a/b/d") // "../d"
  */
 export function relativeURL(base: string, url: string) {
@@ -22,26 +22,26 @@ export function relativeURL(base: string, url: string) {
 	if (/^[\w+\-\.]+:(?:[^/]|$)/.test(url)) {
 		return url
 	}
-	const baseObj = nu.parse(base, false, true)
-	const urlObj = nu.parse(url, false, true)
+	const baseObj = parse(base, false, true)
+	const urlObj = parse(url, false, true)
 	// 协议不同直接取绝对路径
 	if (baseObj.protocol !== urlObj.protocol) {
-		return nu.format(urlObj)
+		return format(urlObj)
 	}
 	// 协议相同但主机不同，取协议外的绝对路径
 	if (baseObj.host !== urlObj.host || baseObj.auth !== urlObj.auth) {
 		if (urlObj.slashes) {
 			delete urlObj.protocol
 		}
-		return nu.format(urlObj)
+		return format(urlObj)
 	}
 	// base 和 url 必须同时是相对路径或绝对路径，否则不处理
 	if (baseObj.pathname && urlObj.pathname && (baseObj.pathname.charCodeAt(0) === 47/*/*/) !== (urlObj.pathname.charCodeAt(0) === 47/*/*/)) {
-		return nu.format(urlObj)
+		return format(urlObj)
 	}
 	// 计算相同的开头部分，以分隔符为界
-	base = baseObj.pathname ? np.posix.normalize(baseObj.pathname) : ""
-	url = urlObj.pathname ? np.posix.normalize(urlObj.pathname) : ""
+	base = baseObj.pathname ? posix.normalize(baseObj.pathname) : ""
+	url = urlObj.pathname ? posix.normalize(urlObj.pathname) : ""
 	let index = -1
 	let i = 0
 	for (; i < base.length && i < url.length; i++) {
@@ -72,7 +72,7 @@ export function relativeURL(base: string, url: string) {
 
 /**
  * 规范化指定地址的格式
- * @param url 要处理的地址
+ * @param url 要格式化的地址
  * @example normalizeURL("abc/") // "abc/"
  * @example normalizeURL("./abc.js") // "abc.js"
  */
@@ -80,11 +80,11 @@ export function normalizeURL(url: string) {
 	if (!url || /^[\w+\-\.]+:(?:[^/]|$)/.test(url)) {
 		return url
 	}
-	const urlObj = nu.parse(url, false, true)
+	const urlObj = parse(url, false, true)
 	if (urlObj.pathname) {
-		urlObj.pathname = np.posix.normalize(urlObj.pathname)
+		urlObj.pathname = posix.normalize(urlObj.pathname)
 	}
-	return nu.format(urlObj)
+	return format(urlObj)
 }
 
 /**

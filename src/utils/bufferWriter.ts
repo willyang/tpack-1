@@ -26,10 +26,10 @@ export class BufferWriter extends Writable {
 		this.buffer = newBuffer
 	}
 
-    /**
-     * 确保缓存可以存放指定的字节数，如果不够则申请更大的缓存
-     * @param value 要设置的字节数
-     */
+	/**
+	 * 确保缓存可以存放指定的字节数，如果不够则申请更大的缓存
+	 * @param value 要设置的字节数
+	 */
 	ensureCapacity(value: number) {
 		if (value < this.capacity) {
 			return
@@ -37,14 +37,14 @@ export class BufferWriter extends Writable {
 		this.capacity = value + Math.max(Math.round(value / 8), 4096)
 	}
 
-    /**
-     * 底层实现写入操作
-     * @param chunk 要写入的缓存
-     * @param encoding 写入的编码
-     * @param callback 写入的回调
+	/**
+	 * 底层实现写入操作
+	 * @param chunk 要写入的缓存
+	 * @param encoding 写入的编码
+	 * @param callback 写入的回调
 	 * @protected
-     * @override
-     */
+	 * @override
+	 */
 	_write(chunk: Buffer, encoding: string, callback: Function) {
 		this.ensureCapacity(this.length + chunk.length)
 		chunk.copy(this.buffer, this.length, 0)
@@ -52,11 +52,11 @@ export class BufferWriter extends Writable {
 		callback()
 	}
 
-    /**
-     * 获取最后生成的缓存对象
-     * @param start 截取字节开始的位置
-     * @param end 截取字节结束的位置
-     */
+	/**
+	 * 获取最后生成的缓存对象
+	 * @param start 截取字节开始的位置
+	 * @param end 截取字节结束的位置
+	 */
 	toBuffer(start = 0, end = this.length) {
 		start = Math.max(start, 0)
 		end = Math.min(end, this.length)

@@ -21,17 +21,18 @@ export class TextWriter {
 	/** 减少一个缩进 */
 	unindent() { this.indentString = this.indentString.substr(0, this.indentString.length - this.indentChar.length) }
 
-    /**
-     * 写入一段文本
-     * @param content 要写入的内容
-     * @param startIndex 要写入的内容中的开始索引（从 0 开始）
-     * @param endIndex 要写入的内容中的结束索引（从 0 开始）
-     * @param sourcePath 内容的源文件路径
-     * @param sourceMap 源文件的源映射，如果存在将自动合并到当前源映射
-     * @param sourceLine 内容在源文件中的行号（从 0 开始）
-     * @param sourceColumn 内容在源文件中的列号（从 0 开始）
-     */
-	write(content: string, startIndex?: number, endIndex?: number, sourcePath?: string, sourceMap?: SourceMapBuilder, sourceLine?: number, sourceColumn?: number) {
+	/**
+	 * 写入一段文本
+	 * @param content 要写入的内容
+	 * @param startIndex 要写入的内容中的开始索引（从 0 开始）
+	 * @param endIndex 要写入的内容中的结束索引（从 0 开始）
+	 * @param sourcePath 内容的源文件路径或索引
+	 * @param sourceMap 源文件的源映射，如果存在将自动合并到当前源映射
+	 * @param sourceLine 内容在源文件中的行号（从 0 开始）
+	 * @param sourceColumn 内容在源文件中的列号（从 0 开始）
+	 * @param name 内容对应的符号或索引
+	 */
+	write(content: string, startIndex?: number, endIndex?: number, sourcePath?: string | number, sourceMap?: SourceMapBuilder, sourceLine?: number, sourceColumn?: number, name?: string | number) {
 		if (!this.indentString) {
 			if (startIndex! > 0 || endIndex! < content.length) {
 				content = content.substring(startIndex! || 0, endIndex)
@@ -44,15 +45,12 @@ export class TextWriter {
 			for (let i = startIndex; i < endIndex; i++) {
 				const ch = content.charCodeAt(i)
 				const newLine = ch === 13 /*\r*/ || ch === 10 /*\n*/
-
 				// 新行需要添加缩进
 				if (prevNewLine && !newLine) {
 					this.content += this.indentString
 				}
-
 				// 添加内容
 				this.content += content.charAt(i)
-
 				// 插入新行
 				if (newLine && ch === 13 /*\r*/ && content.charCodeAt(i + 1) === 10 /*\n*/) {
 					i++
@@ -83,7 +81,7 @@ export class SourceMapTextWriter extends TextWriter {
 	/** 当前写入的列号 */
 	private column = 0
 
-	write(content: string, startIndex = 0, endIndex = content.length, sourcePath?: string, sourceMap?: SourceMapBuilder, sourceLine = 0, sourceColumn = 0) {
+	write(content: string, startIndex = 0, endIndex = content.length, sourcePath?: string | number, sourceMap?: SourceMapBuilder, sourceLine = 0, sourceColumn = 0, name?: string | number) {
 		let prevNewLine = !this.content.length || /[\r\n]$/.test(this.content)
 		let prevCharType: number | undefined
 		let mappings = sourceMap && sourceMap.mappings[sourceLine!]
@@ -107,28 +105,25 @@ export class SourceMapTextWriter extends TextWriter {
 					const mapping = mappings[mappingsIndex]
 					if (mapping.generatedColumn === sourceColumn) {
 						mappingsIndex++
-						this.sourceMapBuilder.addMapping(this.line, this.column, mapping.sourceIndex == undefined ? undefined : sourceMap.sources[mapping.sourceIndex], mapping.sourceLine, mapping.sourceColumn, mapping.nameIndex == undefined ? undefined : sourceMap.names[mapping.nameIndex])
+						this.sourceMapBuilder.addMapping(this.line, this.column, mapping.sourceIndex == undefined ? undefined : sourceMap.sources[mapping.sourceIndex], mapping.sourceLine, mapping.sourceColumn, name !== undefined ? name : mapping.nameIndex == undefined ? undefined : sourceMap.names[mapping.nameIndex])
 					}
 				}
 			} else if (charType !== prevCharType) {
 				// 如果未提供源映射，在字符类型变化后自动生成映射点
-				this.sourceMapBuilder.addMapping(this.line, this.column, sourcePath, sourceLine, sourceColumn)
+				this.sourceMapBuilder.addMapping(this.line, this.column, sourcePath, sourceLine, sourceColumn, name)
 			}
 			if (i < endIndex) {
-
 				// 新行需要添加缩进
 				if (prevNewLine && !newLine) {
 					this.content += this.indentString
 					this.column += this.indentString.length
 				}
-
 				// 添加内容
 				this.content += content.charAt(i)
 				this.column++
 				if (sourceColumn != undefined) {
 					sourceColumn++
 				}
-
 				// 插入新行
 				if (newLine) {
 					if (ch === 13 /*\r*/ && content.charCodeAt(i + 1) === 10 /*\n*/) {

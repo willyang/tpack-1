@@ -24,6 +24,10 @@ export namespace miscTest {
 		}
 	}
 
+	export function escapeRegexpTest() {
+		assert.strictEqual(new RegExp(misc.escapeRegExp("\\s")).source, /\\s/.source)
+	}
+
 	export function formatDateTest() {
 		assert.strictEqual(misc.formatDate(new Date("2014/01/01 03:05:07")), "2014-01-01 03:05:07")
 		assert.strictEqual(misc.formatDate(new Date("2014/01/01 03:05:07"), "yyMdHms"), "1411357")
@@ -67,10 +71,6 @@ export namespace miscTest {
 		assert.strictEqual(misc.formatSize(1024 * 1024), "1.00MB")
 		assert.strictEqual(misc.formatSize(1024 * 1024 * 1024), "1.00GB")
 		assert.strictEqual(misc.formatSize(1024 * 1024 * 1024 * 1024), "1.00TB")
-	}
-
-	export function escapeRegexpTest() {
-		assert.strictEqual(new RegExp(misc.escapeRegExp("\\s")).source, /\\s/.source)
 	}
 
 }

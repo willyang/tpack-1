@@ -4,76 +4,52 @@
  * @see http://www.alloyteam.com/2014/01/source-map-version-3-introduction/
  */
 export interface SourceMapObject {
-
 	/** 版本号，目前仅支持版本 3 */
 	version: number
-
 	/** 生成的文件的路径 */
 	file?: string
-
 	/** 所有源文件的根路径 */
 	sourceRoot?: string
-
 	/** 所有源文件的路径 */
 	sources: string[]
-
 	/** 所有源文件的内容 */
 	sourcesContent?: string[]
-
 	/** 所有符号名称 */
 	names?: string[]
-
 	/** 所有映射点 */
 	mappings: string
-
 }
 
 /** 表示一个索引映射（Index Map）对象 */
 export interface IndexMapObject {
-
 	/** 版本号，目前仅支持版本 3 */
 	version: number
-
 	/** 生成的文件的路径 */
 	file?: string
-
-	/** 所有所有映射片段 */
+	/** 所有映射段 */
 	sections: ({
-
 		/** 当前片段在生成文件内的偏移位置 */
 		offset: {
-
 			/** 当前位置的行号（从 0 开始）*/
 			line: number
-
 			/** 当前位置的列号（从 0 开始）*/
 			column: number
-
 		}
-
 	} & ({
-
 		/** 当前片段的源映射地址 */
 		url: string
-
 	} | {
-
 		/** 当前片段的源映射数据 */
 		map: SourceMapObject | IndexMapObject
-
 	}))[]
-
 }
 
 /** 表示一个源映射（Source Map）生成器 */
 export interface SourceMapGenerator {
-
 	/** 生成并返回一个源映射对象 */
 	toJSON(): SourceMapObject | IndexMapObject
-
 	/** 生成并返回一个源映射字符串 */
 	toString(): string
-
 }
 
 /** 表示一个源映射（Source Map）数据，可以是一个字符串、对象或生成器 */
@@ -302,13 +278,13 @@ export class SourceMapBuilder implements SourceMapGenerator {
 
 	/**
 	 * 获取源文件中指定位置生成后的所有位置
-	 * @param sourcePath 要获取的源文件路径
+	 * @param sourcePath 要获取的源文件路径或索引
 	 * @param sourceLine 源文件中的行号（从 0 开始）
 	 * @param sourceColumn 源文件中的列号（从 0 开始），如果未提供则返回指定行所有列的生成信息
 	 */
-	getAllGenerated(sourcePath: string, sourceLine: number, sourceColumn?: number) {
+	getAllGenerated(sourcePath: string | number, sourceLine: number, sourceColumn?: number) {
 		const result: GeneratedLocation[] = []
-		const sourceIndex = this.sources.indexOf(sourcePath)
+		const sourceIndex = typeof sourcePath === "number" ? sourcePath : this.sources.indexOf(sourcePath)
 		if (sourceIndex >= 0) {
 			let minColumnOffset = Infinity
 			for (let i = 0; i < this.mappings.length; i++) {
@@ -350,6 +326,13 @@ export class SourceMapBuilder implements SourceMapGenerator {
 	/**
 	 * 遍历所有映射点并调用指定的函数
 	 * @param callback 遍历的回调函数
+	 * * @param generatedLine 生成的行号（从 0 开始）
+	 * * @param generatedColumn 生成的列号（从 0 开始）
+	 * * @param sourcePath 映射的源文件路径或索引
+	 * * @param sourceLine 映射的源文件行号（从 0 开始）
+	 * * @param sourceColumn 映射的源文件列号（从 0 开始）
+	 * * @param name 映射的符合名称
+	 * * @param mapping 原始映射点
 	 */
 	eachMapping(callback: (generatedLine: number, generatedColumn: number, sourcePath: string | undefined, sourceContent: string | undefined, sourceLine: number | undefined, sourceColumn: number | undefined, name: string | undefined, mapping: Mapping) => void) {
 		for (let i = 0; i < this.mappings.length; i++) {
@@ -366,22 +349,22 @@ export class SourceMapBuilder implements SourceMapGenerator {
 	 * 添加一个映射点
 	 * @param generatedLine 生成的行号（从 0 开始）
 	 * @param generatedColumn 生成的列号（从 0 开始）
-	 * @param sourcePath 映射的源文件路径
+	 * @param sourcePath 映射的源文件路径或索引
 	 * @param sourceLine 映射的源文件行号（从 0 开始）
 	 * @param sourceColumn 映射的源文件列号（从 0 开始）
-	 * @param name 映射的符号名称
+	 * @param name 映射的符号名称或索引
 	 * @returns 返回添加的映射点对象
 	 */
-	addMapping(generatedLine: number, generatedColumn: number, sourcePath?: string, sourceLine?: number, sourceColumn?: number, name?: string) {
+	addMapping(generatedLine: number, generatedColumn: number, sourcePath?: string | number, sourceLine?: number, sourceColumn?: number, name?: string | number) {
 		const mapping: Mapping = {
 			generatedColumn: generatedColumn
 		}
 		if (sourcePath != undefined) {
-			mapping.sourceIndex = this.addSource(sourcePath)
+			mapping.sourceIndex = typeof sourcePath === "number" ? sourcePath : this.addSource(sourcePath)
 			mapping.sourceLine = sourceLine
 			mapping.sourceColumn = sourceColumn
 			if (name != undefined) {
-				mapping.nameIndex = this.addName(name)
+				mapping.nameIndex = typeof name === "number" ? name : this.addName(name)
 			}
 		}
 		// 插入排序：确保同一行内的所有映射点按生成列的顺序存储
@@ -407,7 +390,7 @@ export class SourceMapBuilder implements SourceMapGenerator {
 	}
 
 	/**
-	 * 根据指定的源映射更新当前源映射
+	 * 合并新的源映射
 	 * @param other 要合并的源映射
 	 * @param file 要合并的源映射所属的生成文件，如果为空则使用第一个源码信息
 	 * @description
@@ -417,30 +400,47 @@ export class SourceMapBuilder implements SourceMapGenerator {
 	 */
 	applySourceMap(other: SourceMapBuilder, file = other.file) {
 		const sourceIndex = file != undefined ? this.sources.indexOf(file) : 0
-		if (sourceIndex >= 0) {
-			this.sources.splice(sourceIndex, 1)
-			this.sourcesContent.splice(sourceIndex, 1)
-			for (const mappings of this.mappings) {
-				if (mappings) {
-					for (const mapping of mappings) {
-						if (mapping.sourceIndex === sourceIndex) {
-							const source = mapping.sourceLine !== undefined && mapping.sourceColumn !== undefined ? other.getSource(mapping.sourceLine, mapping.sourceColumn, true, true) : null
-							if (source && source.sourcePath != undefined) {
-								mapping.sourceIndex = this.addSource(source.sourcePath)
-								mapping.sourceLine = source.line
-								mapping.sourceColumn = source.column
-								if (source.name != undefined) {
-									mapping.nameIndex = this.addName(source.name)
-								} else {
-									delete mapping.nameIndex
-								}
+		if (sourceIndex < 0) {
+			return
+		}
+		this.sources.splice(sourceIndex, 1)
+		this.sourcesContent.splice(sourceIndex, 1)
+		const sourceIndexMapping: number[] = []
+		for (let i = 0; i < other.sources.length; i++) {
+			const newIndex = sourceIndexMapping[i] = this.addSource(other.sources[i])
+			if (other.sourcesContent && other.sourcesContent[i] !== undefined) {
+				this.sourcesContent[newIndex] = other.sourcesContent[i]
+			}
+		}
+		let nameIndexMapping: number[] | undefined
+		if (other.names) {
+			nameIndexMapping = []
+			for (let i = 0; i < other.names.length; i++) {
+				nameIndexMapping[i] = this.addName(other.names[i])
+			}
+		}
+		for (const mappings of this.mappings) {
+			if (mappings) {
+				for (const mapping of mappings) {
+					if (mapping.sourceIndex === sourceIndex) {
+						const source = mapping.sourceLine !== undefined && mapping.sourceColumn !== undefined ? other.getSource(mapping.sourceLine, mapping.sourceColumn, true, true) : null
+						if (source && source.mapping.sourceIndex !== undefined) {
+							mapping.sourceIndex = sourceIndexMapping[source.mapping.sourceIndex]
+							mapping.sourceLine = source.line
+							mapping.sourceColumn = source.column
+							if (nameIndexMapping && source.mapping.nameIndex != undefined) {
+								mapping.nameIndex = nameIndexMapping[source.mapping.nameIndex]
 							} else {
-								delete mapping.sourceIndex
-								delete mapping.sourceLine
-								delete mapping.sourceColumn
 								delete mapping.nameIndex
 							}
+						} else {
+							delete mapping.sourceIndex
+							delete mapping.sourceLine
+							delete mapping.sourceColumn
+							delete mapping.nameIndex
 						}
+					} else if (mapping.sourceIndex! > sourceIndex) {
+						mapping.sourceIndex!--
 					}
 				}
 			}
@@ -480,56 +480,40 @@ export class SourceMapBuilder implements SourceMapGenerator {
 
 /** 表示源映射中的一个映射点 */
 export interface Mapping {
-
-	/** 生成的列号（从 0 开始）*/
+	/** 生成文件中的列号（从 0 开始）*/
 	readonly generatedColumn: number
-
 	/** 源文件的索引（从 0 开始）*/
 	sourceIndex?: number
-
 	/** 源文件中的行号（从 0 开始）*/
 	sourceLine?: number
-
 	/** 源文件中的列号（从 0 开始）*/
 	sourceColumn?: number
-
 	/** 源符号名称的索引（从 0 开始）*/
 	nameIndex?: number
-
 }
 
 /** 表示一个源位置 */
 export interface SourceLocation {
-
 	/** 映射点 */
 	mapping: Mapping
-
 	/** 源文件的路径 */
 	sourcePath?: string
-
 	/** 源文件中的行号（从 0 开始）*/
 	line?: number
-
 	/** 源文件中的列号（从 0 开始）*/
 	column?: number
-
 	/** 源符号名称 */
 	name?: string
-
 }
 
 /** 表示一个生成的位置 */
 export interface GeneratedLocation {
-
 	/** 获取映射点 */
 	mapping: Mapping
-
 	/** 生成文件中的行号（从 0 开始）*/
 	line: number
-
 	/** 生成文件中的列号（从 0 开始）*/
 	column: number
-
 }
 
 /** 编码一个映射字符串 */
@@ -651,10 +635,10 @@ function decodeBase64Vlq(value: string, context: { index: number }) {
 }
 
 /**
- * 读取指定内容中的 `#sourceMappingURL` 注释，如果不存在则返回空
+ * 读取指定内容的 `#sourceMappingURL` 注释，如果不存在则返回空
  * @param content 要读取的内容
  */
-export function getSourceMapURL(content: string) {
+export function getSourceMappingURL(content: string) {
 	const match = /(?:\/\/(?:[#@]\ssourceMappingURL=([^\s'"]*))|\/\*(?:\s*\r?\n(?:\/\/)?)?(?:[#@]\ssourceMappingURL=([^\s'"]*))\s*\*\/)\s*/.exec(content)
 	if (match) {
 		return match[1] || match[2] || ""
@@ -668,17 +652,17 @@ export function getSourceMapURL(content: string) {
  * @param sourceMapURL 要插入或更新的源映射地址，如果地址为空则删除已存在的注释
  * @param singleLineComment 如果为 `true` 则插入单行注释，否则插入多行注释
  */
-export function setSourceMapURL(content: string, sourceMapURL: string | null, singleLineComment?: boolean) {
+export function setSourceMappingURL(content: string, sourceMapURL: string | null, singleLineComment?: boolean) {
 	let found = false
 	content = content.replace(/(?:\/\/(?:[#@]\ssourceMappingURL=([^\s'"]*))|\/\*(?:\s*\r?\n(?:\/\/)?)?(?:[#@]\ssourceMappingURL=([^\s'"]*))\s*\*\/)\s*/, (_, singleLineComment: any) => {
 		found = true
 		if (sourceMapURL) {
-			return createSourceMapURLComment(sourceMapURL, singleLineComment)
+			return createSourceMappingURLComment(sourceMapURL, singleLineComment)
 		}
 		return ""
 	})
 	if (!found && sourceMapURL) {
-		content += `\n${createSourceMapURLComment(sourceMapURL, singleLineComment)}`
+		content += `\n${createSourceMappingURLComment(sourceMapURL, singleLineComment)}`
 	}
 	return content
 }
@@ -688,6 +672,6 @@ export function setSourceMapURL(content: string, sourceMapURL: string | null, si
  * @param sourceMapURL 要添加或更新的源映射地址
  * @param singleLineComment 如果为 `true` 则返回单行注释，否则返回多行注释
  */
-export function createSourceMapURLComment(sourceMapURL: string, singleLineComment?: boolean) {
+export function createSourceMappingURLComment(sourceMapURL: string, singleLineComment?: boolean) {
 	return singleLineComment ? `//# sourceMappingURL=${sourceMapURL}` : `/*# sourceMappingURL=${sourceMapURL} */`
 }

@@ -1,8 +1,8 @@
 import * as assert from "assert"
-import * as nfs from "fs"
-import * as np from "path"
+import * as fs from "fs"
+import { resolve as resolvePath } from "path"
 import * as watcher from "../../src/utils/watcher"
-import { init, uninit, root } from "../helpers/fsHelper"
+import { init, root, uninit } from "../helpers/fsHelper"
 
 export namespace watcherTest {
 
@@ -20,37 +20,37 @@ export namespace watcherTest {
 			w.delay = 10
 			w.on("delete", path => { assert.fail(path) })
 			w.on("create", path => {
-				assert.strictEqual(path, np.resolve("foo/你好.txt"))
-				assert.strictEqual(nfs.readFileSync("foo/你好.txt", "utf-8"), "A")
-				nfs.writeFileSync("foo/你好.txt", "B")
+				assert.strictEqual(path, resolvePath("foo/你好.txt"))
+				assert.strictEqual(fs.readFileSync("foo/你好.txt", "utf-8"), "A")
+				fs.writeFileSync("foo/你好.txt", "B")
 			})
 			w.on("change", path => {
-				assert.strictEqual(path, np.resolve("foo/你好.txt"))
-				assert.strictEqual(nfs.readFileSync("foo/你好.txt", "utf-8"), "B")
+				assert.strictEqual(path, resolvePath("foo/你好.txt"))
+				assert.strictEqual(fs.readFileSync("foo/你好.txt", "utf-8"), "B")
 				w.close(resolve)
 			})
 			w.add(root, () => {
-				nfs.mkdirSync("foo/")
-				nfs.writeFileSync("foo/你好.txt", "A")
+				fs.mkdirSync("foo/")
+				fs.writeFileSync("foo/你好.txt", "A")
 			})
 		})
 	}
 
 	export async function watchDirAndDeleteFile() {
 		await new Promise(resolve => {
-			nfs.mkdirSync("foo/")
-			nfs.writeFileSync("foo/你好.txt", "A")
+			fs.mkdirSync("foo/")
+			fs.writeFileSync("foo/你好.txt", "A")
 			const w = new watcher.Watcher()
 			w.delay = 10
 			w.on("delete", path => {
-				assert.strictEqual(path, np.resolve("foo/你好.txt"))
-				assert.strictEqual(nfs.existsSync("foo/你好.txt"), false)
+				assert.strictEqual(path, resolvePath("foo/你好.txt"))
+				assert.strictEqual(fs.existsSync("foo/你好.txt"), false)
 				w.close(resolve)
 			})
 			w.on("create", path => { assert.fail(path) })
 			w.on("change", path => { assert.fail(path) })
 			w.add(root, () => {
-				nfs.unlinkSync("foo/你好.txt")
+				fs.unlinkSync("foo/你好.txt")
 			})
 		})
 	}
@@ -63,8 +63,8 @@ export namespace watcherTest {
 			w.on("create", path => { assert.fail(path) })
 			w.on("change", path => { assert.fail(path) })
 			w.add(root, () => {
-				nfs.mkdirSync("foo/")
-				nfs.mkdirSync("foo/goo")
+				fs.mkdirSync("foo/")
+				fs.mkdirSync("foo/goo")
 				w.close(resolve)
 			})
 		})
@@ -75,8 +75,8 @@ export namespace watcherTest {
 		this.timeout(10000)
 		await new Promise(resolve => {
 			let step = 0
-			nfs.mkdirSync("foo/")
-			nfs.writeFileSync("foo/你好.txt", "O")
+			fs.mkdirSync("foo/")
+			fs.writeFileSync("foo/你好.txt", "O")
 			const w = new watcher.Watcher()
 			w.delay = 10
 			w.usePolling = false
@@ -85,43 +85,43 @@ export namespace watcherTest {
 			w.on("change", (path: string) => {
 				switch (step++) {
 					case 0:
-						assert.strictEqual(path, np.resolve("foo/你好.txt"))
-						assert.strictEqual(nfs.readFileSync("foo/你好.txt", "utf-8"), "A")
-						nfs.writeFileSync("foo/你好.txt", "B")
+						assert.strictEqual(path, resolvePath("foo/你好.txt"))
+						assert.strictEqual(fs.readFileSync("foo/你好.txt", "utf-8"), "A")
+						fs.writeFileSync("foo/你好.txt", "B")
 						break
 					case 1:
-						assert.strictEqual(path, np.resolve("foo/你好.txt"))
-						assert.strictEqual(nfs.readFileSync("foo/你好.txt", "utf-8"), "B")
+						assert.strictEqual(path, resolvePath("foo/你好.txt"))
+						assert.strictEqual(fs.readFileSync("foo/你好.txt", "utf-8"), "B")
 						w.close(resolve)
 						break
 				}
 			})
 			w.add("foo/你好.txt", () => {
-				nfs.writeFileSync("foo/你好.txt", "A")
+				fs.writeFileSync("foo/你好.txt", "A")
 			})
 		})
 	}
 
 	export async function watchFileAndDeleteFile() {
 		await new Promise(resolve => {
-			nfs.mkdirSync("foo/")
-			nfs.writeFileSync("foo/你好.txt", "A")
+			fs.mkdirSync("foo/")
+			fs.writeFileSync("foo/你好.txt", "A")
 			const w = new watcher.Watcher()
 			w.delay = 10
 			w.usePolling = false
 			w.on("delete", path => {
-				assert.strictEqual(path, np.resolve("foo/你好.txt"))
-				assert.strictEqual(nfs.existsSync("foo/你好.txt"), false)
+				assert.strictEqual(path, resolvePath("foo/你好.txt"))
+				assert.strictEqual(fs.existsSync("foo/你好.txt"), false)
 				w.close(resolve)
 			})
 			w.on("create", path => { assert.fail(path) })
 			w.add("foo/你好.txt", () => {
 				if (process.platform === "darwin") {
 					setTimeout(() => {
-						nfs.unlinkSync("foo/你好.txt")
+						fs.unlinkSync("foo/你好.txt")
 					}, 1000)
 				} else {
-					nfs.unlinkSync("foo/你好.txt")
+					fs.unlinkSync("foo/你好.txt")
 				}
 			})
 		})
@@ -129,8 +129,8 @@ export namespace watcherTest {
 
 	export async function addTest() {
 		await new Promise(resolve => {
-			nfs.mkdirSync("foo/")
-			nfs.mkdirSync("foo/sub1")
+			fs.mkdirSync("foo/")
+			fs.mkdirSync("foo/sub1")
 			const w = new watcher.Watcher()
 			w.add("foo", error => {
 				assert.ifError(error)

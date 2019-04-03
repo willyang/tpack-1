@@ -382,30 +382,30 @@ export namespace sourceMapTest {
 		])
 	}
 
-	export function getSourceMapURLTest() {
-		assert.strictEqual(sourceMap.getSourceMapURL("\n/*# sourceMappingURL=a.js */"), "a.js")
-		assert.strictEqual(sourceMap.getSourceMapURL("a\n/*# sourceMappingURL=a.js */"), "a.js")
-		assert.strictEqual(sourceMap.getSourceMapURL("a\n//# sourceMappingURL=a.js"), "a.js")
-		assert.strictEqual(sourceMap.getSourceMapURL("/*# sourceMappingURL=a.js */"), "a.js")
-		assert.strictEqual(sourceMap.getSourceMapURL("//# sourceMappingURL=a.js"), "a.js")
-		assert.strictEqual(sourceMap.getSourceMapURL("//# sourceMappingURL=a.js"), "a.js")
-		assert.strictEqual(sourceMap.getSourceMapURL("//@ sourceMappingURL="), "")
-		assert.strictEqual(sourceMap.getSourceMapURL("//@ sourceMap"), null)
+	export function getSourceMappingURLTest() {
+		assert.strictEqual(sourceMap.getSourceMappingURL("\n/*# sourceMappingURL=a.js */"), "a.js")
+		assert.strictEqual(sourceMap.getSourceMappingURL("a\n/*# sourceMappingURL=a.js */"), "a.js")
+		assert.strictEqual(sourceMap.getSourceMappingURL("a\n//# sourceMappingURL=a.js"), "a.js")
+		assert.strictEqual(sourceMap.getSourceMappingURL("/*# sourceMappingURL=a.js */"), "a.js")
+		assert.strictEqual(sourceMap.getSourceMappingURL("//# sourceMappingURL=a.js"), "a.js")
+		assert.strictEqual(sourceMap.getSourceMappingURL("//# sourceMappingURL=a.js"), "a.js")
+		assert.strictEqual(sourceMap.getSourceMappingURL("//@ sourceMappingURL="), "")
+		assert.strictEqual(sourceMap.getSourceMappingURL("//@ sourceMap"), null)
 	}
 
-	export function setSourceMapURLTest() {
-		assert.strictEqual(sourceMap.setSourceMapURL("", "a.js"), "\n/*# sourceMappingURL=a.js */")
-		assert.strictEqual(sourceMap.setSourceMapURL("a", "a.js"), "a\n/*# sourceMappingURL=a.js */")
-		assert.strictEqual(sourceMap.setSourceMapURL("a", "a.js", true), "a\n//# sourceMappingURL=a.js")
-		assert.strictEqual(sourceMap.setSourceMapURL("/*# sourceMappingURL=b.js */", "a.js"), "/*# sourceMappingURL=a.js */")
-		assert.strictEqual(sourceMap.setSourceMapURL("//# sourceMappingURL=b.js", "a.js", true), "//# sourceMappingURL=a.js")
-		assert.strictEqual(sourceMap.setSourceMapURL("//@ sourceMappingURL=b.js", "a.js", true), "//# sourceMappingURL=a.js")
-		assert.strictEqual(sourceMap.setSourceMapURL("//@ sourceMappingURL=b.js", ""), "")
+	export function setSourceMappingURLTest() {
+		assert.strictEqual(sourceMap.setSourceMappingURL("", "a.js"), "\n/*# sourceMappingURL=a.js */")
+		assert.strictEqual(sourceMap.setSourceMappingURL("a", "a.js"), "a\n/*# sourceMappingURL=a.js */")
+		assert.strictEqual(sourceMap.setSourceMappingURL("a", "a.js", true), "a\n//# sourceMappingURL=a.js")
+		assert.strictEqual(sourceMap.setSourceMappingURL("/*# sourceMappingURL=b.js */", "a.js"), "/*# sourceMappingURL=a.js */")
+		assert.strictEqual(sourceMap.setSourceMappingURL("//# sourceMappingURL=b.js", "a.js", true), "//# sourceMappingURL=a.js")
+		assert.strictEqual(sourceMap.setSourceMappingURL("//@ sourceMappingURL=b.js", "a.js", true), "//# sourceMappingURL=a.js")
+		assert.strictEqual(sourceMap.setSourceMappingURL("//@ sourceMappingURL=b.js", ""), "")
 	}
 
-	export function createSourceMapURLCommentTest() {
-		assert.strictEqual(sourceMap.createSourceMapURLComment("a.js"), "/*# sourceMappingURL=a.js */")
-		assert.strictEqual(sourceMap.createSourceMapURLComment("a.js", true), "//# sourceMappingURL=a.js")
+	export function createSourceMappingURLCommentTest() {
+		assert.strictEqual(sourceMap.createSourceMappingURLComment("a.js"), "/*# sourceMappingURL=a.js */")
+		assert.strictEqual(sourceMap.createSourceMappingURLComment("a.js", true), "//# sourceMappingURL=a.js")
 	}
 
 }

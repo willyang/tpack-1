@@ -1,4 +1,4 @@
-/** 
+/**
  * 删除 UTF-8 BOM 字符
  * @param content 要处理的字符串
  */
@@ -27,6 +27,14 @@ export function insertOrdered<T>(array: T[], value: T, comparer: (x: T, y: T) =>
 		}
 	}
 	array.splice(start, 0, value)
+}
+
+/**
+ * 编码正则表达式的特殊字符
+ * @param pattern 要编码的正则表达式模式
+ */
+export function escapeRegExp(pattern: string) {
+	return pattern.replace(/[.\\(){}[\]\-+*?^$|]/g, "\\$&")
 }
 
 /** 所有日期格式化器 */
@@ -98,7 +106,8 @@ export function formatHRTime(hrTime: [number, number]) {
 
 /**
  * 格式化文件体积
- * @param byteSize 字节大小
+ * @param byteSize 要格式化的字节大小
+ * @example formatSize(1024) // "1.00KB"
  */
 export function formatSize(byteSize: number) {
 	if (byteSize < 1000) {
@@ -114,12 +123,4 @@ export function formatSize(byteSize: number) {
 		return (byteSize / (1024 * 1024 * 1024)).toFixed(2) + "GB"
 	}
 	return (byteSize / (1024 * 1024 * 1024 * 1024)).toFixed(2) + "TB"
-}
-
-/** 
- * 编码正则表达式的特殊字符
- * @param pattern 要编码的正则表达式模式
- */
-export function escapeRegExp(pattern: string) {
-	return pattern.replace(/[.\\(){}[\]\-+*?^$|]/g, "\\$&")
 }
