@@ -1,0 +1,45 @@
+{
+	"version": "0.2.0",
+	"configurations": [
+		{
+			"type": "node",
+			"request": "launch",
+			"name": "Run All Test",
+			"runtimeExecutable": "mocha",
+			"runtimeArgs": [
+				"--timeout",
+				"999999",
+				"--colors",
+				"-r",
+				"ts-node/register",
+				"--ui",
+				"exports",
+				"${workspaceFolder}/**/*.test.ts"
+			],
+			"internalConsoleOptions": "openOnSessionStart",
+			"skipFiles": [
+				"<node_internals>/**"
+			]
+		},
+		{
+			"type": "node",
+			"request": "launch",
+			"name": "Run Current Test",
+			"runtimeExecutable": "mocha",
+			"runtimeArgs": [
+				"--timeout",
+				"999999",
+				"--colors",
+				"-r",
+				"ts-node/register",
+				"--ui",
+				"exports",
+				"${file}"
+			],
+			"internalConsoleOptions": "openOnSessionStart",
+			"skipFiles": [
+				"<node_internals>/**"
+			]
+		}
+	]
+}

@@ -1,0 +1,43 @@
+{
+  "name": "tpack",
+  "version": "3.0.0",
+  "repository": "https://github.com/tpack/tpack",
+  "description": "An out-of-the-box web bundler for multi-page apps with good performance",
+  "keywords": [
+    "web bundler",
+    "build tool"
+  ],
+  "license": "SEE LICENSE IN LICENSE",
+  "author": "xuld <xuld@vip.qq.com>",
+  "engines": {
+    "node": ">=10.12",
+    "npm": ">=6"
+  },
+  "engineStrict": true,
+  "main": "./dist/index.js",
+  "types": "./src/index.ts",
+  "bin": {
+    "tpack": "./dist/bin/tpack.js"
+  },
+  "dependencies": {
+    "ent": "^2.2.0",
+    "signal-exit": "^3.0.2",
+    "v8-compile-cache": "^2.0.2"
+  },
+  "devDependencies": {
+    "@types/ent": "^2.2.1",
+    "@types/mocha": "^5.2.6",
+    "@types/node": "^11.13.0",
+    "coveralls": "^3.0.3",
+    "mocha": "^6.0.2",
+    "nyc": "^13.3.0",
+    "ts-node": "^8.0.3",
+    "typescript": "^3.4.1"
+  },
+  "scripts": {
+    "build": "tsc -p src/tsconfig.json",
+    "test": "mocha -r ts-node/register --ui exports **/*.test.ts",
+    "coverage": "nyc --reporter=text-summary --reporter=html --report-dir=coverage --temp-dir=coverage/.nyc_output --extension=.ts --include=src/** ./node_modules/.bin/mocha -r ts-node/register --ui exports **/*.test.ts",
+    "coveralls": "nyc report --reporter=text-lcov --report-dir=coverage --temp-dir=coverage/.nyc_output | coveralls"
+  }
+}
