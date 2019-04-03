@@ -1,5 +1,5 @@
 import * as assert from "assert"
-import * as np from "path"
+import { resolve, join } from "path"
 import * as resolver from "../../src/core/resolver"
 import { init, uninit, root } from "../helpers/fsHelper"
 
@@ -52,23 +52,21 @@ export namespace resolverTest {
 				"abc4*": false,
 			}
 		})
-		const traces = []
-		traces["verbose"] = true
-		assert.strictEqual(await r.resolve("./entry", np.resolve("dir"), traces), np.join(root, "dir/entry"))
-		assert.strictEqual(await r.resolve("x", np.resolve("dir"), traces), np.join(root, "dir/web_components/x"))
-		assert.strictEqual(await r.resolve("y", np.resolve("dir"), traces), np.join(root, "web_components/y"))
-		assert.strictEqual(await r.resolve("module1", np.resolve("dir"), traces), np.join(root, "web_components/module1/index.js"))
-		assert.strictEqual(await r.resolve("module2", np.resolve("dir"), traces), np.join(root, "web_components/module2/entry.js"))
+		assert.strictEqual(await r.resolve("./entry", resolve("dir"), { trace: [] }), join(root, "dir/entry"))
+		assert.strictEqual(await r.resolve("x", resolve("dir"), { trace: [] }), join(root, "dir/web_components/x"))
+		assert.strictEqual(await r.resolve("y", resolve("dir"), { trace: [] }), join(root, "web_components/y"))
+		assert.strictEqual(await r.resolve("module1", resolve("dir"), { trace: [] }), join(root, "web_components/module1/index.js"))
+		assert.strictEqual(await r.resolve("module2", resolve("dir"), { trace: [] }), join(root, "web_components/module2/entry.js"))
 
-		assert.strictEqual(await r.resolve("abc1", np.resolve("dir"), traces), np.join(root, "dir/xyz1"))
-		assert.strictEqual(await r.resolve("abc2", np.resolve("dir"), traces), np.join(root, "dir/xyz2"))
-		assert.strictEqual(await r.resolve("abc3", np.resolve("dir"), traces), np.join(root, "dir/xyz3"))
-		assert.strictEqual(await r.resolve("abc4", np.resolve("dir"), traces), false)
-		assert.strictEqual(await r.resolve("abc5", np.resolve("dir"), traces), false)
-		assert.strictEqual(await r.resolve("abc6", np.resolve("dir"), traces), np.join(root, "dir/xyz3"))
+		assert.strictEqual(await r.resolve("abc1", resolve("dir"), { trace: [] }), join(root, "dir/xyz1"))
+		assert.strictEqual(await r.resolve("abc2", resolve("dir"), { trace: [] }), join(root, "dir/xyz2"))
+		assert.strictEqual(await r.resolve("abc3", resolve("dir"), { trace: [] }), join(root, "dir/xyz3"))
+		assert.strictEqual(await r.resolve("abc4", resolve("dir"), { trace: [] }), false)
+		assert.strictEqual(await r.resolve("abc5", resolve("dir"), { trace: [] }), false)
+		assert.strictEqual(await r.resolve("abc6", resolve("dir"), { trace: [] }), join(root, "dir/xyz3"))
 
-		assert.strictEqual(await r.resolve(".", np.resolve("web_components/module2"), traces), np.join(root, "web_components/module2/entry.js"))
-		assert.strictEqual(await r.resolve(np.join(root, "web_components/module2/entry.js"), np.resolve("web_components/module2"), traces), np.join(root, "web_components/module2/entry.js"))
+		assert.strictEqual(await r.resolve(".", resolve("web_components/module2"), { trace: [] }), join(root, "web_components/module2/entry.js"))
+		assert.strictEqual(await r.resolve(join(root, "web_components/module2/entry.js"), resolve("web_components/module2"), { trace: [] }), join(root, "web_components/module2/entry.js"))
 	}
 
 }

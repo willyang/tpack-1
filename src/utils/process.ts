@@ -68,7 +68,7 @@ export function open(url: string, wait = false, app?: string, appArgs?: string[]
 		args.push(url)
 	} else if (process.platform === "darwin") {
 		cmd = "open"
-		if (wait) args.push("-W");
+		if (wait) args.push("-W")
 		if (app) args.push("-a", app)
 		args.push(url)
 		if (appArgs) args.push("--args", ...appArgs)

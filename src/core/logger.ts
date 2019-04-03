@@ -1,6 +1,7 @@
-import { showCursor, hideCursor, clear, color, ConsoleColor, formatCodeFrame, removeAnsiCodes, ellipsisLog, bold } from "../utils/commandLine"
-import { relativePath, resolvePath } from "../utils/path"
+import { bold, color, ConsoleColor, ellipsisString, formatCodeFrame, removeAnsiCodes } from "../utils/ansi"
+import { clear, hideCursor, showCursor } from "../utils/commandLine"
 import { formatDate } from "../utils/misc"
+import { relativePath, resolvePath } from "../utils/path"
 import { i18n } from "./i18n"
 
 /** 表示一个日志记录器 */
@@ -10,7 +11,7 @@ export class Logger {
 
 	/**
 	 * 初始化新的日志输出器
-	 * @param options 输出器的选项
+	 * @param options 附加选项
 	 */
 	constructor(options: LoggerOptions = {}) {
 		// @ts-ignore
@@ -144,7 +145,7 @@ export class Logger {
 		}
 	}
 
-	/** 判断或设置是否打印带颜色控制符的日志 */
+	/** 判断或设置是否打印带颜色 ANSI 控制符的日志 */
 	colors: boolean
 
 	/** 判断或设置是否打印代码片段 */
@@ -352,7 +353,7 @@ export class Logger {
 	/** 获取或设置进度指示器更新的间隔毫秒数 */
 	spinnerInterval: number
 
-	/** 
+	/**
 	 * 显示或更新进度指示器文案
 	 * @param spinnerText 要显示的文案
 	 */
@@ -403,7 +404,7 @@ export class Logger {
 			if (this._spinnerText != undefined) {
 				content += this._spinnerText.replace(/[\n\r][^]*$/, "")
 			}
-			this._resolvedSpinnerText = ellipsisLog(content, (process.stdout.columns || Infinity) - this.spinnerFrames[index].length)
+			this._resolvedSpinnerText = ellipsisString(content, (process.stdout.columns || Infinity) - this.spinnerFrames[index].length)
 		}
 		this._oldStdoutWrite!.call(process.stdout, `\u001b[0J\u001b[${this.spinnerColor}m${this.spinnerFrames[index]}\u001b[39m${this._resolvedSpinnerText}\u001b[1G`)
 	}
@@ -449,7 +450,7 @@ export interface LoggerOptions {
 	 */
 	logLevel?: LogLevel | keyof typeof LogLevel
 
-	/** 
+	/**
 	 * 判断是否忽略指定日志的正则表达式或回调函数
 	 * @param log 日志对象
 	 * @param logLevel 日志等级
@@ -536,7 +537,7 @@ export interface LoggerOptions {
 	 */
 	spinnerInterval?: number
 
-	/** 
+	/**
 	 * 进度指示器的颜色
 	 * @default "brightCyan"
 	 */
@@ -548,19 +549,19 @@ export interface LoggerOptions {
 	 */
 	successIcon?: string
 
-	/** 
+	/**
 	 * 在警告日志前追加的前缀
 	 * @default process.platform === "win32" ? "⚠ " : "⚠️ "
 	 */
 	warningIcon?: string
 
-	/** 
+	/**
 	 * 在错误日志前追加的前缀
 	 * @default process.platform === "win32" ? "✖ " : "× "
 	 */
 	errorIcon?: string
 
-	/** 
+	/**
 	 * 在致命错误日志前追加的前缀
 	 * @default this.errorIcon
 	 */
@@ -570,70 +571,48 @@ export interface LoggerOptions {
 
 /** 表示日志的等级 */
 export const enum LogLevel {
-
 	/** 详细信息 */
 	verbose,
-
 	/** 普通日志 */
 	log,
-
 	/** 重要信息 */
 	info,
-
 	/** 成功信息 */
 	success,
-
 	/** 警告 */
 	warning,
-
 	/** 错误 */
 	error,
-
 	/** 致命错误 */
 	fatal,
-
 	/** 无日志 */
 	silent
-
 }
 
 /** 表示一条日志项 */
 export interface LogEntry {
-
 	/** 日志的来源 */
 	source?: string
-
 	/** 日志的信息 */
 	message?: string
-
 	/** 原始错误对象 */
 	error?: Error
-
 	/** 是否打印错误堆栈信息 */
 	printStack?: boolean
-
 	/** 日志相关的源文件名 */
 	fileName?: string
-
 	/** 日志相关的源内容 */
 	content?: string
-
 	/** 日志相关的源行号（从 0 开始）*/
 	line?: number
-
 	/** 日志相关的源列号（从 0 开始）*/
 	column?: number
-
 	/** 日志相关的源结束行号（从 0 开始）*/
 	endLine?: number
-
 	/** 日志相关的源结束列号（从 0 开始）*/
 	endColumn?: number
-
 	/** 日志的详情 */
 	detail?: string
-
 	/** 日志相关的源代码片段 */
 	codeFrame?: string
-
 }

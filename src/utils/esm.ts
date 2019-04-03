@@ -8,15 +8,15 @@
  */
 export function transformESModuleToCommonJS(code: string) {
 	let exports = ""
-	code = code.replace(/"(?:[^\\"\n\r\u2028\u2029]|\\.)*"|'(?:[^\\'\n\r\u2028\u2029]|\\.)*'|`(?:[^\\\`\$]|\\.|\$\{(?:[^{]|\{[^}]*\})*?\}|\$(?!\{))*`|\/\/.*|\/\*.*?(?:\*\/|$)|\/(?:[^/\n\r\u2028\u2029]|\\.)\/|\bexport\s+(default\s+)?((?:const\b|let\b|var\b|(?:async\s*)?function\b(?:\s*\*)?|class\b)\s*)([a-zA-Z0-9_$\xAA-\uDDEF]+)|\bexport\s*(default)\b|\b(?:import\s*(?:\*\s*as\s*([a-zA-Z0-9_$\xAA-\uDDEF]+)|(\{.*?\})|([a-zA-Z0-9_$\xAA-\uDDEF]+)\s*(?:,\s*(\{.*?\}))?)\s*from|import\s*|(export)\s*\*\s*from|export\s*(\{.*?\})\s*from)\s*("(?:[^\\"\n\r\u2028\u2029]|\\.)*"|'(?:[^\\'\n\r\u2028\u2029]|\\.)*')/sg, (source, exportDefault, exportPrefix, exportName, exportExpression, importAll, importNames, importDefault, importNames2, exportAll, exportNames, fromModule) => {
-		if (exportDefault || exportExpression) {
-			exports += `\nObject.defineProperty(module.exports, "__esModule", { value: true });`
-		}
-		if (exportName) {
-			exports += `\nmodule.exports.${exportDefault ? "default" : exportName} = ${exportName};`
-			return `${exportPrefix}${exportName}`
-		}
-		if (exportExpression) {
+	code = code.replace(/'(?:[^\\'\n\r\u2028\u2029]|\\.)*'|"(?:[^\\"\n\r\u2028\u2029]|\\.)*"|\/\/.*|\/\*.*?(?:\*\/|$)|`(?:[^\\\`\$]|\\.|\$\{(?:[^{]|\{[^}]*\})*?\}|\$(?!\{))*`|\/(?:[^/\n\r\u2028\u2029]|\\.)\/|\bexport\s+((default\s+)?((?:const\b|let\b|var\b|(?:async\s*)?function\b(?:\s*\*)?|class\b)\s*)([a-zA-Z0-9_$\xAA-\uDDEF]+)|default\b)|\b(?:import\s*(?:\*\s*as\s*([a-zA-Z0-9_$\xAA-\uDDEF]+)|(\{.*?\})|([a-zA-Z0-9_$\xAA-\uDDEF]+)\s*(?:,\s*(\{.*?\}))?)\s*from|import\s*|(export)\s*\*\s*from|\bexport\s*(\{.*?\})\s*from)\s*('(?:[^\\'\n\r\u2028\u2029]|\\.)*'|"(?:[^\\"\n\r\u2028\u2029]|\\.)*")/sg, (source, exportBody, exportDefault, exportPrefix, exportName, importAll, importNames, importDefault, importNames2, exportAll, exportNames, fromModule) => {
+		if (exportBody) {
+			if (exportDefault || !exportName) {
+				exports += `\nObject.defineProperty(module.exports, "__esModule", { value: true });`
+			}
+			if (exportName) {
+				exports += `\nmodule.exports.${exportDefault ? "default" : exportName} = ${exportName};`
+				return `${exportPrefix}${exportName}`
+			}
 			return `module.exports.default =`
 		}
 		if (fromModule) {

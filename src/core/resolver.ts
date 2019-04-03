@@ -1,5 +1,5 @@
-import * as np from "path"
 import { Stats } from "fs"
+import { basename, dirname, isAbsolute, join, normalize, resolve, sep } from "path"
 import { FileSystem } from "../utils/fileSystem"
 import { escapeRegExp } from "../utils/misc"
 import { relativePath } from "../utils/path"
@@ -10,6 +10,11 @@ export class Resolver {
 
 	// #region 选项
 
+	/**
+	 * 初始化新的路径解析器
+	 * @param options 附加选项
+	 * @param fs 使用的文件系统
+	 */
 	constructor(options: ResolverOptions = {}, fs = new FileSystem()) {
 		this.fs = fs
 		this.alias = []
@@ -41,7 +46,7 @@ export class Resolver {
 			if (/[\\\/]/.test(module)) {
 				return {
 					absolute: true,
-					name: np.resolve(module)
+					name: resolve(module)
 				}
 			} else {
 				return {
@@ -150,8 +155,8 @@ export class Resolver {
 		if (moduleName.startsWith(".")) {
 			// 解析相对路径
 			if (moduleName.startsWith("./") || moduleName.startsWith("../")) {
-				moduleName = np.join(containingDir, moduleName)
-				return await this.resolveFileOrDir(moduleName, context, !moduleName.endsWith(np.sep), true)
+				moduleName = join(containingDir, moduleName)
+				return await this.resolveFileOrDir(moduleName, context, !moduleName.endsWith(sep), true)
 			}
 			// . 表示所在文件夹本身
 			if (moduleName === ".") {
@@ -159,13 +164,13 @@ export class Resolver {
 			}
 			// .. 表示父文件夹本身
 			if (moduleName === "..") {
-				return await this.resolveFileOrDir(np.dirname(containingDir), context, false, true)
+				return await this.resolveFileOrDir(dirname(containingDir), context, false, true)
 			}
 		}
 		// 解析绝对路径
-		if (np.isAbsolute(moduleName)) {
-			moduleName = np.normalize(moduleName)
-			return await this.resolveFileOrDir(moduleName, context, !moduleName.endsWith(np.sep), true)
+		if (isAbsolute(moduleName)) {
+			moduleName = normalize(moduleName)
+			return await this.resolveFileOrDir(moduleName, context, !moduleName.endsWith(sep), true)
 		}
 		// 应用映射
 		if (this.alias && !ignorePathMapping) {
@@ -208,7 +213,7 @@ export class Resolver {
 						}
 						if (typeof aliasName === "string") {
 							if (context && context.trace) context.trace.push(i18n`Read field '${aliasField}' from '${descriptionFile.__path__}' -> '${aliasName}'`)
-							return await this.resolveModule(aliasName, np.dirname(descriptionFile.__path__), context)
+							return await this.resolveModule(aliasName, dirname(descriptionFile.__path__), context)
 						}
 					} else {
 						if (context && context.trace) context.trace.push(i18n`Read field '${aliasField}' from '${descriptionFile.__path__}' -> Invalid(Not an object)`)
@@ -221,25 +226,23 @@ export class Resolver {
 		// 遍历 node_modules
 		for (const moduleDirectory of this.modules) {
 			if (moduleDirectory.absolute) {
-				const fullPath = np.join(moduleDirectory.name, moduleName)
-				const result = await this.resolveFileOrDir(fullPath, context, !fullPath.endsWith(np.sep), true)
+				const fullPath = join(moduleDirectory.name, moduleName)
+				const result = await this.resolveFileOrDir(fullPath, context, !fullPath.endsWith(sep), true)
 				if (result != null) {
-					if (context) context.global = true
 					return result
 				}
 			} else {
 				let current = containingDir
 				while (true) {
 					// 跳过 node_modules 本身
-					if (np.basename(current) !== moduleDirectory.name) {
-						const fullPath = np.join(current, moduleDirectory.name, moduleName)
-						const result = await this.resolveFileOrDir(fullPath, context, !fullPath.endsWith(np.sep), true)
+					if (basename(current) !== moduleDirectory.name) {
+						const fullPath = join(current, moduleDirectory.name, moduleName)
+						const result = await this.resolveFileOrDir(fullPath, context, !fullPath.endsWith(sep), true)
 						if (result != null) {
-							if (context) context.external = true
 							return result
 						}
 					}
-					const parent = np.dirname(current)
+					const parent = dirname(current)
 					if (parent.length === current.length) {
 						break
 					}
@@ -273,7 +276,7 @@ export class Resolver {
 	 */
 	protected async resolveFileOrDir(path: string, context?: ResolveContext, testFile?: boolean, testDir?: boolean, enforceExtension?: boolean, ignoreDescriptionFile?: boolean): Promise<string | null | false> {
 		// 读取所在文件夹
-		const parent = np.dirname(path)
+		const parent = dirname(path)
 		let entries: Set<string> | false | null
 		try {
 			entries = await this.readDir(parent)
@@ -286,7 +289,7 @@ export class Resolver {
 			if (context && context.trace) context.trace.push(i18n`Test '${parent}' -> ${e.message}`)
 			return null
 		}
-		const name = np.basename(path)
+		const name = basename(path)
 
 		// 尝试追加文件扩展名
 		if (testFile) {
@@ -311,7 +314,7 @@ export class Resolver {
 								if (aliasField) {
 									const aliasValue = descriptionFile[aliasField]
 									if (typeof aliasValue === "object") {
-										const name = "./" + relativePath(np.dirname(descriptionFile.__path__), fullPath)
+										const name = "./" + relativePath(dirname(descriptionFile.__path__), fullPath)
 										const aliasName = aliasValue[name]
 										if (aliasName === false) {
 											if (context && context.trace) context.trace.push(i18n`Read field '${aliasField}' from '${descriptionFile.__path__}' -> false`)
@@ -319,7 +322,7 @@ export class Resolver {
 										}
 										if (typeof aliasName === "string") {
 											if (context && context.trace) context.trace.push(i18n`Read field '${aliasField}' from '${descriptionFile.__path__}' -> '${aliasName}'`)
-											return await this.resolveModule(aliasName, np.dirname(descriptionFile.__path__), context)
+											return await this.resolveModule(aliasName, dirname(descriptionFile.__path__), context)
 										}
 									} else {
 										if (context && context.trace) context.trace.push(i18n`Read field '${aliasField}' from '${descriptionFile.__path__}' -> Invalid(Not an object)`)
@@ -363,9 +366,9 @@ export class Resolver {
 						if (mainField != undefined) {
 							const mainValue = descriptionFile[mainField]
 							if (typeof mainValue === "string") {
-								const mainFullPath = np.join(path, mainValue)
+								const mainFullPath = join(path, mainValue)
 								if (context && context.trace) context.trace.push(i18n`Read field '${mainField}' from '${descriptionFile.__path__}' -> '${mainFullPath}'`)
-								const result = await this.resolveFileOrDir(mainFullPath, context, !mainFullPath.endsWith(np.sep), true, false, true)
+								const result = await this.resolveFileOrDir(mainFullPath, context, !mainFullPath.endsWith(sep), true, false, true)
 								if (result) {
 									return result
 								}
@@ -379,7 +382,7 @@ export class Resolver {
 				}
 				// 尝试首页
 				for (const mainFileName of this.mainFiles) {
-					const mainFilePath = np.join(path, mainFileName === "&" ? np.basename(path) : mainFileName)
+					const mainFilePath = join(path, mainFileName === "&" ? basename(path) : mainFileName)
 					const result = await this.resolveFileOrDir(mainFilePath, context, true, false, true)
 					if (result) {
 						return result
@@ -431,7 +434,7 @@ export class Resolver {
 	 */
 	private async _readDescriptionFile(dir: string, context?: ResolveContext) {
 		for (const descriptionFileName of this.descriptionFiles) {
-			const descriptionFilePath = np.join(dir, descriptionFileName)
+			const descriptionFilePath = join(dir, descriptionFileName)
 			let descriptionFileContent: string
 			try {
 				descriptionFileContent = await this.fs.readFile(descriptionFilePath, "utf-8")
@@ -469,7 +472,7 @@ export class Resolver {
 				return descriptionFile
 			}
 			// 继续查找上级
-			const parent = np.dirname(dir)
+			const parent = dirname(dir)
 			if (parent === dir) {
 				break
 			}
@@ -495,7 +498,7 @@ export class Resolver {
 
 	// #region IO 缓存
 
-	/** 
+	/**
 	 * 存储所有路径读取的缓存
 	 * @description
 	 * 对象的键是文件或文件夹路径，对象的值可能是：
@@ -577,7 +580,7 @@ export class Resolver {
 			}
 			if (data !== undefined) {
 				if (data === null || data === true) {
-					return data
+					return data as null | true
 				}
 				return false
 			}
@@ -595,7 +598,7 @@ export class Resolver {
 			}
 		}
 		this._fsCache.set(path, data)
-		return data
+		return data as null | true
 	}
 
 	/**
@@ -688,17 +691,8 @@ export interface ResolverOptions {
 
 /** 用于接收解析详情的上下文对象 */
 export interface ResolveContext {
-
 	/** 标记本次解析结果是否来自缓存 */
 	cache?: boolean
-
-	/** 标记本次解析是否来自全局文件夹（如 `components`） */
-	global?: boolean
-
-	/** 标记本次解析是否来自外部文件夹（如 `node_modules`） */
-	external?: boolean
-
 	/** 存储本次解析的详细日志 */
 	trace?: string[]
-
 }

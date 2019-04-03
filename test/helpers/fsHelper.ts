@@ -1,12 +1,12 @@
 import * as assert from "assert"
-import * as nfs from "fs"
-import * as np from "path"
+import * as fs from "fs"
+import { join, resolve } from "path"
 
 /** 原工作目录 */
 var cwd: string | undefined
 
 /** 用于测试的临时文件夹路径 */
-export const root = np.resolve("__test__")
+export const root = resolve("__test__")
 
 /**
  * 初始化用于测试的文件
@@ -41,12 +41,12 @@ export async function uninit() {
 export function check(entries: FileEntries, dir = root) {
 	for (const key in entries) {
 		const entry = entries[key]
-		const child = np.join(dir, key)
+		const child = join(dir, key)
 		if (typeof entry === "string") {
-			assert.strictEqual(nfs.readFileSync(child, "utf-8"), entry)
+			assert.strictEqual(fs.readFileSync(child, "utf-8"), entry)
 		} else {
 			try {
-				assert.strictEqual(nfs.statSync(child).isDirectory(), true)
+				assert.strictEqual(fs.statSync(child).isDirectory(), true)
 			} catch (e) {
 				assert.ifError(e)
 			}
@@ -64,7 +64,7 @@ function changeDir(path: string) {
 		return process.chdir(path)
 	} catch (e) {
 		if (e.code === "ENOENT") {
-			nfs.mkdirSync(path)
+			fs.mkdirSync(path)
 			process.chdir(path)
 		}
 		if (process.cwd() !== path) {
@@ -80,13 +80,13 @@ function changeDir(path: string) {
  */
 function createEntries(entries: FileEntries, dir = root) {
 	try {
-		nfs.mkdirSync(dir)
+		fs.mkdirSync(dir)
 	} catch (e) { }
 	for (const key in entries) {
 		const entry = entries[key]
-		const child = np.resolve(dir, key)
+		const child = resolve(dir, key)
 		if (typeof entry === "string") {
-			nfs.writeFileSync(child, entry)
+			fs.writeFileSync(child, entry)
 		} else {
 			createEntries(entry, child)
 		}
@@ -98,16 +98,16 @@ function createEntries(entries: FileEntries, dir = root) {
  * @param path 要删除的文件或文件夹路径
  */
 function deleteEntry(path: string) {
-	if (!nfs.existsSync(path)) {
+	if (!fs.existsSync(path)) {
 		return
 	}
-	if (nfs.statSync(path).isDirectory()) {
-		for (const entry of nfs.readdirSync(path)) {
-			deleteEntry(np.join(path, entry))
+	if (fs.statSync(path).isDirectory()) {
+		for (const entry of fs.readdirSync(path)) {
+			deleteEntry(join(path, entry))
 		}
-		nfs.rmdirSync(path)
+		fs.rmdirSync(path)
 	} else {
-		nfs.unlinkSync(path)
+		fs.unlinkSync(path)
 	}
 }
 
@@ -139,10 +139,10 @@ function autoRetry(callback, times = 3) {
  */
 export async function simulateIOError(func: () => any, sysCall: string, errorCodes = ["UNKNOWN"]) {
 	let index = 0
-	const original = nfs[sysCall]
-	nfs[sysCall] = (...args: any[]) => {
+	const original = fs[sysCall]
+	fs[sysCall] = (...args: any[]) => {
 		if (index >= errorCodes.length) {
-			nfs[sysCall] = original
+			fs[sysCall] = original
 			return original(...args)
 		}
 		const error = new Error("Simulated IO Error") as NodeJS.ErrnoException
@@ -156,6 +156,6 @@ export async function simulateIOError(func: () => any, sysCall: string, errorCod
 	try {
 		return await func()
 	} finally {
-		nfs[sysCall] = original
+		fs[sysCall] = original
 	}
 }
