@@ -144,7 +144,7 @@ export function formatCommandLineOptions(commandLineOptions: { [option: string]:
 	// 生成最终结果
 	maxColumns += 2
 	let result = ""
-	for (const [title, commandOption] of keys) {
+	for (const [title, commandOption] of keys.entries()) {
 		if (result) {
 			result += "\n"
 		}

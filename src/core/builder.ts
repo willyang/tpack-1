@@ -535,7 +535,7 @@ export class Builder extends EventEmitter {
 		/** 确认变量为路径 */
 		function assertPath(value: any, name: string) {
 			if (typeof value === "string") {
-				if (/^\s|\s$|[<>|&:]/.test(value)) {
+				if (/^\s|\s$|[<>|&]/.test(value)) {
 					errors.push(i18n`'${name}' is not a valid path, got ${stringify(value)}`)
 				}
 				return
@@ -2049,7 +2049,7 @@ export class Builder extends EventEmitter {
 	 * @param builder 当前的构建器对象
 	 */
 	summaryReporter(result: BuildResult) {
-		const log = i18n`${color(formatDate(new Date(), "[HH:mm:ss]"), ConsoleColor.brightBlack)}${result.errorCount ? color(i18n`Build completed!`, ConsoleColor.brightCyan) : color(i18n`Build success!`, ConsoleColor.brightGreen)}(error: ${color(result.errorCount.toString(), result.errorCount > 0 ? ConsoleColor.brightRed : ConsoleColor.white)}, warning: ${color(result.warningCount.toString(), result.warningCount > 0 ? ConsoleColor.brightYellow : ConsoleColor.brightBlack)}, file: ${this.emittedModules.size}, elapsed: ${result.elapsedTimeString})`
+		const log = i18n`${color(formatDate(new Date(), "[HH:mm:ss]"), ConsoleColor.brightBlack)}${result.errorCount ? color(i18n`Build completed!`, ConsoleColor.brightCyan) : color(i18n`Build success!`, ConsoleColor.brightGreen)}(error: ${color(result.errorCount.toString(), result.errorCount > 0 ? ConsoleColor.brightRed : ConsoleColor.brightBlack)}, warning: ${color(result.warningCount.toString(), result.warningCount > 0 ? ConsoleColor.brightYellow : ConsoleColor.brightBlack)}, file: ${this.emittedModules.size}, elapsed: ${result.elapsedTimeString})`
 		if (result.errorCount) {
 			this.logger.fatal(log)
 		} else {

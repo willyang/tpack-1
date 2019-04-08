@@ -315,12 +315,13 @@ export class Logger {
 		}
 		if (this.logLevel === LogLevel.verbose) {
 			this.verbose(`${color(formatDate(new Date(), "[HH:mm:ss]"), ConsoleColor.brightBlack)} ${color(i18n`Finished`, ConsoleColor.brightMagenta)} ${taskId.content}`)
-		} else if (this.logLevel < LogLevel.silent && this.spinner) {
-			if (this._taskEnd) {
+		}
+		if (this._taskEnd) {
+			if (this._spinnerTimer) {
 				this.showSpinner(this._taskEnd.content)
-			} else {
-				this.hideSpinner()
 			}
+		} else {
+			this.hideSpinner()
 		}
 	}
 

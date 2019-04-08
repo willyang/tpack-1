@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { existsSync } from "fs"
-import { join, dirname } from "path"
+import { join, dirname, resolve } from "path"
 import { LogLevel } from "../core/logger"
 import { BuilderOptions, Builder } from "../core/builder"
 import { Matcher } from "../utils/matcher"
@@ -358,7 +358,10 @@ async function main() {
 	if (args["--require"]) {
 		commandLineOptions["--require"].execute(args["--require"] as string[])
 	}
-	const taskName = args["0"] as string
+	let taskName = args["0"] as string | undefined
+	if (taskName && /[[\\/*?\.!\[\]\{\}]/.test(taskName)) {
+		taskName = undefined
+	}
 	if (!taskName) {
 		if (args["--help"]) {
 			return commandLineOptions["--help"].execute()
@@ -384,7 +387,7 @@ async function main() {
 
 	// 搜索配置文件
 	const configFile = searchFile(args["--config"] ? [args["--config"] as string] : [".js", ...Object.keys(extensions)].map(ext => `tpack.config${ext}`))
-	const tasks = loadConfigFile(configFile || require.resolve("../configs/tpack.config.default.js"), !args["--no-es-module"])
+	const tasks = configFile ? loadConfigFile(configFile, !args["--no-es-module"]) : { default: {} }
 	if (args["--completion"]) {
 		return notImplemented("--completion")
 	}
@@ -392,22 +395,28 @@ async function main() {
 		process.stdout.write(i18n`Defined Tasks in '${configFile || i18n`<default config file>`}':\n${formatTaskList(Object.keys(tasks))}` + '\n')
 		return
 	}
-	const taskNames = searchList(tasks, taskName || "default")
-	if (taskNames.length !== 1) {
-		process.stdout.write(i18n`Error: Task '${taskName || "default"}' is not defined in '${configFile || i18n` <default config file >`}'.` + '\n\n')
-		if (taskNames.length) {
-			process.stdout.write(i18n`Did you mean one of these?\n${formatTaskList(taskNames)}` + '\n')
-			process.exitCode = -5
-		} else {
-			process.stdout.write(i18n`Defined Tasks:\n${formatTaskList(Object.keys(tasks))}` + '\n')
-			process.exitCode = -4
+	if (taskName) {
+		const taskNames = searchList(tasks, taskName)
+		if (taskNames.length !== 1) {
+			process.stdout.write(i18n`Error: Task '${taskName}' is not defined in '${configFile || i18n` <default config file >`}'.` + '\n\n')
+			if (taskNames.length) {
+				process.stdout.write(i18n`Did you mean one of these?\n${formatTaskList(taskNames)}` + '\n')
+				process.exitCode = -5
+			} else {
+				process.stdout.write(i18n`Defined Tasks:\n${formatTaskList(Object.keys(tasks))}` + '\n')
+				process.exitCode = -4
+			}
+			return
 		}
-		return
+		taskName = taskNames[0]
 	}
 
 	// 读取并应用配置
-	const task = tasks[taskNames[0]]
-	const options = typeof task === "function" ? await task(args) : task
+	const task = tasks[taskName || "default"]
+	const options = task ? typeof task === "function" ? await task(args) : task : configFile || existsSync("src") ? {} : {
+		rootDir: ".",
+		outDir: "."
+	}
 	if (typeof options === "object") {
 		const { Builder } = require("../core/builder") as typeof import("../core/builder")
 		for (const key in args) {
@@ -415,6 +424,9 @@ async function main() {
 			if (commandOption && commandOption.apply) {
 				commandOption.apply(options, args[key])
 			}
+		}
+		if (configFile) {
+			options.baseDir = resolve(dirname(configFile), options.baseDir || ".")
 		}
 		let builder: Builder
 		try {
@@ -424,9 +436,20 @@ async function main() {
 			process.exitCode = -3
 			return
 		}
+		// 计算忽略列表
 		let filter: Matcher | undefined
 		if (args["--match"] || args["--exclude"]) {
-			filter = builder.createMatcher(args["--match"] as string || (() => true), args["--exclude"] as string)
+			filter = builder.createMatcher(args["--match"] as string[] || (() => true), args["--exclude"] as string[])
+		}
+		for (let i = 0; args[i]; i++) {
+			const value = args[i] as string
+			if (/[\\/*?\.!\[\]\{\}]/.test(value)) {
+				if (!filter) filter = builder.createMatcher(value)
+				else filter.include(value)
+			}
+		}
+		if (!filter && configFile && process.cwd().length > dirname(configFile).length) {
+			filter = builder.createMatcher(process.cwd())
 		}
 		try {
 			process.exitCode = (await builder.run(filter)).errorCount
