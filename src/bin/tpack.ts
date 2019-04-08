@@ -1,8 +1,9 @@
 #!/usr/bin/env node
-import * as nfs from "fs"
-import * as np from "path"
+import { existsSync } from "fs"
+import { join, dirname } from "path"
 import { LogLevel } from "../core/logger"
 import { BuilderOptions, Builder } from "../core/builder"
+import { Matcher } from "../utils/matcher"
 
 main()
 
@@ -181,19 +182,13 @@ async function main() {
 			alias: "-m",
 			argument: "<glob>",
 			description: "Specify the files to build",
-			multipy: true,
-			apply(options: BuilderOptions, argument: string[]) {
-				options.match = options.match ? [options.match, argument] : argument
-			}
+			multipy: true
 		},
 		"--exclude": {
 			alias: "-x",
 			argument: "<glob>",
 			description: "Specify the files to be skipped",
-			multipy: true,
-			apply(options: BuilderOptions, argument: string[]) {
-				options.exclude = options.exclude ? [options.exclude, argument] : argument
-			}
+			multipy: true
 		},
 		"--no-path-check": {
 			description: "Disable path checking and allow overwriting source files",
@@ -277,7 +272,7 @@ async function main() {
 			description: "Print absolute paths in outputs",
 			apply(options: BuilderOptions) {
 				const loggerOptions = (options.logger || (options.logger = {}))
-				loggerOptions.fullPath = true
+				loggerOptions.printFullPath = true
 			}
 		},
 		"--locale": {
@@ -429,8 +424,12 @@ async function main() {
 			process.exitCode = -3
 			return
 		}
+		let filter: Matcher | undefined
+		if (args["--match"] || args["--exclude"]) {
+			filter = builder.createMatcher(args["--match"] as string || (() => true), args["--exclude"] as string)
+		}
 		try {
-			process.exitCode = await builder.run()
+			process.exitCode = (await builder.run(filter)).errorCount
 		} catch (e) {
 			process.stdout.write(e.stack + '\n')
 			process.exitCode = -2
@@ -447,13 +446,13 @@ async function main() {
 		let prevDir: typeof dir
 		do {
 			for (const name of names) {
-				const fullPath = np.join(dir, name)
-				if (nfs.existsSync(fullPath)) {
+				const fullPath = join(dir, name)
+				if (existsSync(fullPath)) {
 					return fullPath
 				}
 			}
 			prevDir = dir
-			dir = np.dirname(dir)
+			dir = dirname(dir)
 		} while (dir.length !== prevDir.length)
 		return null
 	}

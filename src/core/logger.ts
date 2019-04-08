@@ -18,7 +18,7 @@ export class Logger {
 		this.logLevel = options.logLevel !== undefined ? typeof options.logLevel === "string" ? LogLevel[options.logLevel] : options.logLevel : LogLevel.log
 		this.ignore = options.ignore ? options.ignore instanceof RegExp ? log => (options.ignore as RegExp).test(log.message || "") : options.ignore : undefined
 		this.colors = options.colors !== undefined ? options.colors : process.stdout.isTTY === true && !process.env["NODE_DISABLE_COLORS"]
-		this.fullPath = !!options.printFullPath
+		this.printFullPath = !!options.printFullPath
 		this.baseDir = options.baseDir || process.cwd()
 		this.codeFrame = !!options.codeFrame
 		this.codeFrameOptions = { columns: process.stdout.columns, rows: 3, showLine: true, showColumn: true, tab: "    ", ...(typeof options.codeFrame === "object" ? options.codeFrame : null) }
@@ -233,7 +233,7 @@ export class Logger {
 	}
 
 	/** 判断或设置是否显示完整绝对路径 */
-	fullPath: boolean
+	printFullPath: boolean
 
 	/** 获取或设置路径的基路径 */
 	baseDir: string
@@ -243,7 +243,7 @@ export class Logger {
 	 * @param path 要格式化的路径
 	 */
 	formatPath(path: string) {
-		if (!this.fullPath) {
+		if (!this.printFullPath) {
 			const relative = relativePath(this.baseDir, path)
 			if (!relative.startsWith("../")) {
 				return relative

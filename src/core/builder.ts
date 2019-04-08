@@ -1,7 +1,7 @@
 import { CSSBundler, CSSBundlerOptions } from "../bundlers/css"
 import { HTMLBundler, HTMLBundlerOptions } from "../bundlers/html"
 import { JSBundler, JSBundlerOptions } from "../bundlers/js"
-import { ConsoleColor } from "../utils/ansi"
+import { ConsoleColor, color } from "../utils/ansi"
 import { encodeDataUri } from "../utils/base64"
 import { EventEmitter } from "../utils/eventEmitter"
 import { FileSystem } from "../utils/fileSystem"
@@ -82,13 +82,13 @@ export class Builder extends EventEmitter {
 			match: "**/*.js",
 			...bundlerOptions.resolver
 		}]).map(resolver => ({
-			matcher: resolver.match != undefined && resolver.exclude != undefined ? this.createMatcher(resolver.match, resolver.exclude) : undefined,
+			matcher: resolver.match != undefined && resolver.exclude != undefined ? this.createMatcher(resolver.match || (() => true), resolver.exclude) : undefined,
 			before: resolver.before,
 			after: resolver.after,
 			resolver: resolver.type === "relative" ? undefined : new Resolver(resolver)
 		}))
 		this.externalModules = (bundlerOptions.externalModules || require("../../configs/externalModules.json") as ExternalModuleRule[]).map(externalModule => ({
-			matcher: externalModule.match != undefined && externalModule.exclude != undefined ? this.createMatcher(externalModule.match, externalModule.exclude) : undefined,
+			matcher: externalModule.match != undefined && externalModule.exclude != undefined ? this.createMatcher(externalModule.match || (() => true), externalModule.exclude) : undefined,
 			matchType: externalModule.matchType,
 			minSize: externalModule.minSize || 0,
 			outPath: typeof externalModule.outPath === "string" ? (module: Module, builder: Builder) => {
@@ -185,7 +185,7 @@ export class Builder extends EventEmitter {
 				const id = `${name}-${i}`
 				const resolved: ResolvedProcessorRule = {
 					name: id,
-					matcher: rule.match != undefined && rule.exclude != undefined ? this.createMatcher(rule.match, rule.exclude) : undefined,
+					matcher: rule.match != undefined && rule.exclude != undefined ? this.createMatcher(rule.match || (() => true), rule.exclude) : undefined,
 					processor: rule.process ? rule as Processor : undefined
 				}
 				if (Array.isArray(rule.use)) {
@@ -660,6 +660,7 @@ export class Builder extends EventEmitter {
 	/**
 	 * 创建一个路径匹配器
 	 * @param pattern 匹配的模式
+	 * @param exclude 排除的模式
 	 */
 	createMatcher(match?: Pattern, exclude?: Pattern) {
 		const matcher = new Matcher(match || "**/*", this.globOptions)
@@ -718,10 +719,11 @@ export class Builder extends EventEmitter {
 
 	/**
 	 * 根据配置执行整个构建流程
+	 * @param filter 过滤要构建的路径匹配器
 	 */
-	async run() {
+	async run(filter?: Pattern) {
 		// todo
-		return await this.build()
+		return await this.build(filter)
 	}
 
 	// #endregion
@@ -856,6 +858,7 @@ export class Builder extends EventEmitter {
 		if (this.reporter) {
 			this.reporter(result, this)
 		}
+		return result
 
 		function recordError() { result.errorCount++ }
 		function recordWarning() { result.warningCount++ }
@@ -1948,7 +1951,7 @@ export class Builder extends EventEmitter {
 
 	// #endregion
 
-	// #region 打包
+	// #region 打包辅助
 
 	/** 指定如何合并依赖生成最终的代码 */
 	output: {
@@ -2038,7 +2041,7 @@ export class Builder extends EventEmitter {
 	 * @param result 包含构建结果的对象
 	 * @param builder 当前的构建器对象
 	 */
-	readonly reporter?: (result: BuildResult, builder: Builder) => string
+	readonly reporter?: (result: BuildResult, builder: Builder) => void
 
 	/**
 	 * 概述报告器
@@ -2046,7 +2049,12 @@ export class Builder extends EventEmitter {
 	 * @param builder 当前的构建器对象
 	 */
 	summaryReporter(result: BuildResult) {
-		return ""
+		const log = i18n`${color(formatDate(new Date(), "[HH:mm:ss]"), ConsoleColor.brightBlack)}${result.errorCount ? color(i18n`Build completed!`, ConsoleColor.brightCyan) : color(i18n`Build success!`, ConsoleColor.brightGreen)}(error: ${color(result.errorCount.toString(), result.errorCount > 0 ? ConsoleColor.brightRed : ConsoleColor.white)}, warning: ${color(result.warningCount.toString(), result.warningCount > 0 ? ConsoleColor.brightYellow : ConsoleColor.brightBlack)}, file: ${this.emittedModules.size}, elapsed: ${result.elapsedTimeString})`
+		if (result.errorCount) {
+			this.logger.fatal(log)
+		} else {
+			this.logger.success(log)
+		}
 	}
 
 	/**
@@ -2055,7 +2063,7 @@ export class Builder extends EventEmitter {
 	 * @param builder 当前的构建器对象
 	 */
 	detailReporter(result: BuildResult) {
-		return ""
+		// todo
 	}
 
 	// #endregion
@@ -2352,7 +2360,7 @@ export interface BuilderOptions {
 	 * - `(result: BuildResult) => string`: 自定义报告内容
 	 * @default "summary"
 	 */
-	reporter?: "summary" | "detail" | boolean | ((result: BuildResult, builder: Builder) => string)
+	reporter?: "summary" | "detail" | boolean | ((result: BuildResult, builder: Builder) => void)
 	/** 是否监听文件改动并主动重新构建 */
 	watch?: boolean | {
 		/**

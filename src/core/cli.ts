@@ -1,32 +1,9 @@
-import * as np from "path"
-import * as fs from "fs"
+import { resolve, extname } from "path"
+import { readFileSync } from "fs"
 import { i18n, service } from "./i18n"
-import { splitLog } from "../utils/commandLine"
+import { splitString } from "../utils/ansi"
 import { transformESModuleToCommonJS } from "../utils/esm"
 import { stripBOM } from "../utils/misc"
-
-/** 表示一个命令行选项 */
-export interface CommandLineOption {
-
-	/** 当前选项所属的分组，主要用于格式化时显示 */
-	group?: string
-
-	/** 当前选项的别名 */
-	alias?: string | string[]
-
-	/** 当前选项的描述，主要用于格式化时显示 */
-	description?: string
-
-	/** 当前选项的参数名，如果未设置说明没有参数 */
-	argument?: string
-
-	/** 当前选项的默认值，如果未设置则表示当前选项是必填的 */
-	default?: any
-
-	/** 是否允许重复使用当前选项 */
-	multipy?: boolean
-
-}
 
 /**
  * 解析命令行参数
@@ -174,9 +151,25 @@ export function formatCommandLineOptions(commandLineOptions: { [option: string]:
 		if (commandOption.group) {
 			result += `\n${service.translate(commandOption.group)}:\n`
 		}
-		result += `  ${title}${" ".repeat(maxColumns - title.length)}${splitLog(service.translate(commandOption.description!) + (commandOption.default ? i18n` [default: ${commandOption.default}]` : ""), columns - maxColumns).join(`\n${" ".repeat(maxColumns)}`)}`
+		result += `  ${title}${" ".repeat(maxColumns - title.length)}${splitString(service.translate(commandOption.description!) + (commandOption.default ? i18n` [default: ${commandOption.default}]` : ""), columns - maxColumns).join(`\n${" ".repeat(maxColumns)}`)}`
 	}
 	return result
+}
+
+/** 表示一个命令行选项 */
+export interface CommandLineOption {
+	/** 当前选项所属的分组，主要用于格式化时显示 */
+	group?: string
+	/** 当前选项的别名 */
+	alias?: string | string[]
+	/** 当前选项的描述，主要用于格式化时显示 */
+	description?: string
+	/** 当前选项的参数名，如果未设置说明没有参数 */
+	argument?: string
+	/** 当前选项的默认值，如果未设置则表示当前选项是必填的 */
+	default?: any
+	/** 是否允许重复使用当前选项 */
+	multipy?: boolean
 }
 
 /** 所有支持的模块扩展名 */
@@ -193,12 +186,12 @@ export const extensions: { [ext: string]: string } = {
  * @param jsModule 是否支持 JS 文件中的 ES Module 语法
  */
 export function loadConfigFile(path: string, jsModule = true) {
-	path = np.resolve(path)
-	const ext = np.extname(path).toLowerCase()
+	path = resolve(path)
+	const ext = extname(path).toLowerCase()
 	const originalLoader = require.extensions[ext]
 	const js = jsModule && ext === ".js"
 	if (js) {
-		require.extensions[".js"] = (module: any, filename) => module._compile(transformESModuleToCommonJS(stripBOM(fs.readFileSync(filename, "utf8"))), filename)
+		require.extensions[".js"] = (module: any, filename) => module._compile(transformESModuleToCommonJS(stripBOM(readFileSync(filename, "utf8"))), filename)
 	} else if (!originalLoader) {
 		const loaderRegister = extensions[ext]
 		if (loaderRegister) {
