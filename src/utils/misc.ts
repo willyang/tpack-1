@@ -37,6 +37,17 @@ export function escapeRegExp(pattern: string) {
 	return pattern.replace(/[.\\(){}[\]\-+*?^$|]/g, "\\$&")
 }
 
+/**
+ * 拷贝对象的所有内容到哈希表
+ * @param src 要拷贝的源对象
+ * @param dest 要拷贝的目标对象
+ */
+export function copyToMap<T>(src: { [key: string]: T }, dest: Map<string, T>) {
+	for (const key in src) {
+		dest.set(key, src[key])
+	}
+}
+
 /** 所有日期格式化器 */
 const dateFormatters = {
 	y: (date: Date, format: string) => {

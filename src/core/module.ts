@@ -1,6 +1,6 @@
 import { SourceMapData, toSourceMapBuilder, toSourceMapObject, toSourceMapString } from "../utils/sourceMap"
-import { getExt, setExt, getDir, setDir, appendFileName, prependFileName } from "../utils/path"
-import { indexToLocation } from "../utils/location"
+import { getExt, setExt, getDir, setDir, appendFileName, prependFileName, getFileName, setFileName } from "../utils/path"
+import { indexToLineColumn } from "../utils/lineColumn"
 import { LogEntry } from "./logger"
 import { Bundler } from "./builder"
 
@@ -29,22 +29,25 @@ export class Module {
 	protected inspect() { return `<${this.constructor.name} ${this.originalPath}>` }
 
 	/** 获取或设置当前模块的状态 */
-	state = ModuleState.invalid
+	state = ModuleState.initial
+
+	/** 获取或设置模块的 MIME 类型 */
+	type?: string
 
 	/** 获取或设置当前模块关联的打包器 */
-	bundler?: Bundler
+	bundler?: Bundler | false
 
 	/** 判断或设置是否跳过保存当前模块 */
 	noEmit?: boolean
 
-	/** 判断或设置当前模块最终是否内联到其它模块 */
-	inline?: boolean
+	/** 获取或设置模块的生成时间戳 */
+	emitTime?: number
 
-	/** 当模块被修改后负责重新初始化模块数据 */
-	invalidate() {
-		this.state = ModuleState.invalid
+	/** 重置模块的状态 */
+	reset() {
+		if (this.state === ModuleState.changed) this.state = ModuleState.initial
 		this.path = this.originalPath
-		this.warnings = this.errors = this.sourceMap = this.sourceMapPath = this.data = this.bundler = undefined
+		this.warnings = this.errors = this.sourceMap = this.sourceMapPath = this.data = this.noEmit = this.emitTime = this.bundler = this.type = undefined
 		this.reportedWarningCount = this.reportedErrorCount = 0
 		if (this.props) this.props.clear()
 		if (this.dependencies) this.dependencies.length = 0
@@ -63,9 +66,13 @@ export class Module {
 	get ext() { return getExt(this.path) }
 	set ext(value) { this.path = setExt(this.path, value) }
 
-	/** 获取或设置模块的最终模块夹 */
+	/** 获取或设置模块的最终文件夹 */
 	get dir() { return getDir(this.path) }
 	set dir(value) { this.path = setDir(this.path, value) }
+
+	/** 获取或设置模块的最终文件名 */
+	get name() { return getFileName(this.path, false) }
+	set name(value) { this.path = setFileName(this.path, value, false) }
 
 	/**
 	 * 在模块名前追加内容
@@ -223,7 +230,7 @@ export class Module {
 		if (typeof log === "string") {
 			log = { message: log }
 		} else if (log instanceof Error) {
-			log = { message: log.message, error: log, printStack: true }
+			log = { message: log.message, error: log, printErrorStack: true }
 		} else {
 			log = { ...log }
 		}
@@ -238,11 +245,11 @@ export class Module {
 		// 计算行列号
 		if (log.content != undefined && log.line == undefined && log.index != undefined) {
 			const cache: number[] = []
-			const loc = indexToLocation(log.content, log.index, cache)
+			const loc = indexToLineColumn(log.content, log.index, cache)
 			log.line = loc.line
 			log.column = loc.column
 			if (log.endLine == undefined && log.endIndex != undefined) {
-				const loc = indexToLocation(log.content, log.endIndex, cache)
+				const loc = indexToLineColumn(log.content, log.endIndex, cache)
 				log.endLine = loc.line
 				log.endColumn = loc.column
 			}
@@ -279,7 +286,7 @@ export class Module {
 				if (!current.parentModule || typeof current.parentData !== "string" || current.parentIndex == undefined || location.line == undefined) {
 					break
 				}
-				const offsetLoc = indexToLocation(current.parentData, current.parentIndex)
+				const offsetLoc = indexToLineColumn(current.parentData, current.parentIndex)
 				const parentLocation: typeof log.originalLocation = {
 					fileName: current.parentModule.originalPath,
 					content: current.parentData,
@@ -364,7 +371,7 @@ export class Module {
 	 */
 	addSibling(path: string, data: string | Buffer) {
 		const module = new Module(path, false)
-		module.state = ModuleState.generated
+		module.state = ModuleState.emitting
 		module.data = data
 		const siblings = this.siblings || (this.siblings = [])
 		siblings.push(module)
@@ -409,78 +416,66 @@ export class Module {
 
 /** 表示资源模块的状态 */
 export const enum ModuleState {
-
-	/** 模块未载入或已更新 */
-	invalid,
-
-	/** 模块已解析 */
-	parsed,
-
+	/** 初始状态 */
+	initial = 0,
+	/** 模块已修改 */
+	changed = 1 << 0,
+	/** 模块已删除 */
+	deleted = 1 << 1,
+	/** 模块正在加载 */
+	loading = 1 << 2,
+	/** 模块已加载 */
+	loaded = 1 << 3,
+	/** 模块正在生成 */
+	emitting = 1 << 4,
 	/** 模块已生成 */
-	generated,
-
+	emitted = 1 << 5,
+	/** 模块已被更新 */
+	updated = changed | deleted,
+	/** 模块正在处理 */
+	processing = loading | emitting,
 }
 
 /** 表示一个模块的日志 */
 export interface ModuleLogEntry extends LogEntry {
-
 	/** 日志相关的源位置索引（从 0 开始）*/
 	index?: number
-
 	/** 日志相关的源结束位置索引（从 0 开始）*/
 	endIndex?: number
-
 	/** 是否重新计算位置信息 */
 	computeSourceLocation?: boolean
-
 	/** 是否使用源映射（Source Map）重新计算位置信息 */
 	evalSourceMap?: boolean
-
 	/** 经过源映射计算前的原始位置 */
 	originalLocation?: Pick<LogEntry, "fileName" | "content" | "line" | "column" | "endLine" | "endColumn">
-
 }
 
 /** 表示一个模块依赖项 */
 export interface Dependency {
-
 	/** 依赖的模块名，模块名将被继续解析成绝对路径 */
 	name: string
-
 	/** 是否是动态导入 */
 	dynamic?: boolean
-
 	/** 是否是可选导入，可选导入如果解析失败则只警告 */
 	optional?: boolean
-
 	/** 是否内联导入项 */
 	inline?: boolean
-
 	/** 从目标模块依赖的符号名称，如果为空则全导入 */
 	symbols?: string[]
-
 	/** 相关的源行号（从 0 开始）*/
 	line?: number
-
 	/** 相关的源列号（从 0 开始）*/
 	column?: number
-
 	/** 相关的源结束行号（从 0 开始）*/
 	endLine?: number
-
 	/** 相关的源结束列号（从 0 开始）*/
 	endColumn?: number
-
 	/** 相关的源索引（从 0 开始）*/
 	index?: number
-
 	/** 相关的源结束索引（从 0 开始）*/
 	endIndex?: number
-
 	/** 模块名解析后对应的绝对路径 */
 	path?: string | false | null
-
 	/** 路径解析后对应的模块 */
 	module?: Module
-
 }

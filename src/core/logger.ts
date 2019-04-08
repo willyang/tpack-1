@@ -18,7 +18,7 @@ export class Logger {
 		this.logLevel = options.logLevel !== undefined ? typeof options.logLevel === "string" ? LogLevel[options.logLevel] : options.logLevel : LogLevel.log
 		this.ignore = options.ignore ? options.ignore instanceof RegExp ? log => (options.ignore as RegExp).test(log.message || "") : options.ignore : undefined
 		this.colors = options.colors !== undefined ? options.colors : process.stdout.isTTY === true && !process.env["NODE_DISABLE_COLORS"]
-		this.fullPath = !!options.fullPath
+		this.fullPath = !!options.printFullPath
 		this.baseDir = options.baseDir || process.cwd()
 		this.codeFrame = !!options.codeFrame
 		this.codeFrameOptions = { columns: process.stdout.columns, rows: 3, showLine: true, showColumn: true, tab: "    ", ...(typeof options.codeFrame === "object" ? options.codeFrame : null) }
@@ -125,7 +125,7 @@ export class Logger {
 	 * @param level 日志的等级
 	 */
 	protected write(log: string | Error | LogEntry, level: LogLevel) {
-		if (level < this.logLevel || this.ignore && this.ignore(typeof log === "string" ? { message: log } : log instanceof Error ? { error: log, message: log.message, printStack: true } : log, level)) {
+		if (level < this.logLevel || this.ignore && this.ignore(typeof log === "string" ? { message: log } : log instanceof Error ? { error: log, message: log.message, printErrorStack: true } : log, level)) {
 			return
 		}
 		const content = this.formatLog(log)
@@ -182,13 +182,15 @@ export class Logger {
 					loc += ")"
 					content += color(loc, ConsoleColor.brightBlack)
 				}
-				content += color(": ", ConsoleColor.brightBlack)
+				if (log.message != undefined || log.error) {
+					content += color(": ", ConsoleColor.brightBlack)
+				}
 			}
 			// 添加信息
 			if (log.message != undefined) {
 				content += log.message
 			} else if (log.error) {
-				content += `${color(`[${log.error.name}]`, ConsoleColor.brightRed)}${log.error.message}`
+				content += `${color(`[${log.error.name}]`, ConsoleColor.brightRed)}${log.error.message || ""}`
 			}
 			// 添加详情
 			if (log.detail) {
@@ -203,7 +205,7 @@ export class Logger {
 				}
 			}
 			// 添加堆栈信息
-			const stack = (this.logLevel === LogLevel.verbose || log.printStack) && log.error && this.formatStack(log.error.stack || "")
+			const stack = (this.logLevel === LogLevel.verbose || log.printErrorStack) && log.error && this.formatStack(log.error.stack || "")
 			if (stack) {
 				content += `\n${color(stack, ConsoleColor.brightBlack)}`
 			}
@@ -282,7 +284,7 @@ export class Logger {
 		const content = this.formatLog(log)
 		if (this.logLevel === LogLevel.verbose) {
 			this.verbose(`${color(formatDate(new Date(), "[HH:mm:ss]"), ConsoleColor.brightBlack)} ${color(i18n`Starting`, ConsoleColor.brightMagenta)} ${content}`)
-		} else if (this.spinner) {
+		} else if (this.logLevel < LogLevel.silent && this.spinner) {
 			this.showSpinner(content)
 		}
 		// 添加节点
@@ -313,7 +315,7 @@ export class Logger {
 		}
 		if (this.logLevel === LogLevel.verbose) {
 			this.verbose(`${color(formatDate(new Date(), "[HH:mm:ss]"), ConsoleColor.brightBlack)} ${color(i18n`Finished`, ConsoleColor.brightMagenta)} ${taskId.content}`)
-		} else if (this.spinner) {
+		} else if (this.logLevel < LogLevel.silent && this.spinner) {
 			if (this._taskEnd) {
 				this.showSpinner(this._taskEnd.content)
 			} else {
@@ -443,130 +445,108 @@ export class Logger {
 
 /** 表示一个日志记录器的选项 */
 export interface LoggerOptions {
-
 	/**
 	 * 允许打印的最低日志等级
 	 * @default "log"
 	 */
 	logLevel?: LogLevel | keyof typeof LogLevel
-
 	/**
 	 * 判断是否忽略指定日志的正则表达式或回调函数
 	 * @param log 日志对象
 	 * @param logLevel 日志等级
 	 */
 	ignore?: RegExp | ((log: LogEntry, logLevel: LogLevel) => boolean)
-
 	/**
 	 * 是否打印带颜色控制符的日志
 	 * @default process.stdout.isTTY && !process.env["NODE_DISABLE_COLORS"]
 	 */
 	colors?: boolean
-
 	/**
 	 * 是否显示完整绝对路径
 	 * @default false
 	 */
-	fullPath?: boolean
-
+	printFullPath?: boolean
 	/**
 	 * 显示相对路径时使用的基路径
 	 * @default process.cwd()
 	 */
 	baseDir?: string
-
 	/**
 	 * 是否打印代码片段
 	 * @default { columns: 0, rows: 3, showLine: true, showColumn: true, sourceMap: true }
 	 */
 	codeFrame?: boolean | {
-
 		/**
 		 * 最大的列数
 		 * @default process.stdout.columns || Infinity
 		 */
 		columns?: number
-
 		/**
 		 * 最大的行数
 		 * @default 3
 		 */
 		rows?: number
-
 		/**
 		 * 是否打印行指示器
 		 * @default true
 		 */
 		showLine?: boolean
-
 		/**
 		 * 是否打印列指示器
 		 * @default true
 		 */
 		showColumn?: boolean
-
 		/**
 		 * 打印时用于表示 TAB 的字符串
 		 * @default "    "
 		 */
 		tab?: string
-
 	}
-
 	/**
 	 * 是否禁止清除日志
 	 * @default false
 	 */
 	persistent?: boolean
-
 	/**
 	 * 是否打印进度指示器
 	 * @default process.stdout.isTTY
 	 */
 	spinner?: boolean
-
 	/**
 	 * 进度指示器的所有桢
 	 * @default ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
 	 */
 	spinnerFrames?: string[]
-
 	/**
 	 * 进度指示器更新的间隔毫秒数
 	 * @default 90
 	 */
 	spinnerInterval?: number
-
 	/**
 	 * 进度指示器的颜色
 	 * @default "brightCyan"
 	 */
 	spinnerColor?: ConsoleColor | keyof typeof ConsoleColor
-
 	/**
 	 * 在成功日志前追加的前缀
 	 * @default process.platform === "win32" ? "√ " : "√ "
 	 */
 	successIcon?: string
-
 	/**
 	 * 在警告日志前追加的前缀
 	 * @default process.platform === "win32" ? "⚠ " : "⚠️ "
 	 */
 	warningIcon?: string
-
 	/**
 	 * 在错误日志前追加的前缀
 	 * @default process.platform === "win32" ? "✖ " : "× "
 	 */
 	errorIcon?: string
-
 	/**
 	 * 在致命错误日志前追加的前缀
 	 * @default this.errorIcon
 	 */
 	fatalIcon?: string
-
 }
 
 /** 表示日志的等级 */
@@ -598,7 +578,7 @@ export interface LogEntry {
 	/** 原始错误对象 */
 	error?: Error
 	/** 是否打印错误堆栈信息 */
-	printStack?: boolean
+	printErrorStack?: boolean
 	/** 日志相关的源文件名 */
 	fileName?: string
 	/** 日志相关的源内容 */

@@ -24,8 +24,14 @@ export namespace miscTest {
 		}
 	}
 
-	export function escapeRegexpTest() {
+	export function escapeRegExpTest() {
 		assert.strictEqual(new RegExp(misc.escapeRegExp("\\s")).source, /\\s/.source)
+	}
+
+	export function copyToMapTest() {
+		const map = new Map<string, number>()
+		misc.copyToMap({ x: 1, y: 2 }, map)
+		assert.deepStrictEqual(Array.from(map.entries()), [["x", 1], ["y", 2]])
 	}
 
 	export function formatDateTest() {

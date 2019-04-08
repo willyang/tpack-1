@@ -18,13 +18,13 @@ export function exec(command: string, options: SpawnOptions & { args?: ReadonlyA
 		if (cp.stdout) {
 			result.stdout = ""
 			cp.stdout.setEncoding("utf8").on("data", d => {
-				result.stdout += d
+				result.stdout! += d
 			})
 		}
 		if (cp.stderr) {
 			result.stderr = ""
 			cp.stderr.setEncoding("utf8").on("data", d => {
-				result.stderr += d
+				result.stderr! += d
 			})
 		}
 		cp.on("error", reject)
@@ -84,7 +84,7 @@ export function open(url: string, wait = false, app?: string, appArgs?: string[]
 		args.push(url)
 	}
 
-	const cp = spawn(cmd, args, options)
+	const cp = spawn(cmd, args, options!)
 	if (wait) {
 		return new Promise((resolve, reject) => {
 			cp.on("error", reject)

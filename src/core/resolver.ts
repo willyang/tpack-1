@@ -35,7 +35,7 @@ export class Resolver {
 		}
 		this.aliasFields = options.aliasFields !== undefined ? options.aliasFields.length === 0 ? undefined : options.aliasFields : ["browser"]
 		this.descriptionFiles = options.descriptionFiles || ["package.json"]
-		this.ignoreCase = options.enforceCaseSensitive != undefined ? !options.enforceCaseSensitive : fs.isCaseInsensitive
+		this.ignoreCase = options.enforceCaseSensitive === false ? fs.isCaseInsensitive : false
 		this.extensions = options.extensions || ["", ".wasm", ".tsx", ".ts", ".jsx", ".mjs", ".js", ".json"]
 		if (this.extensions.indexOf("") < 0 && !options.enforceExtension) {
 			this.extensions = ["", ...this.extensions]
@@ -616,13 +616,11 @@ export class Resolver {
 
 /** 表示模块解析器的配置 */
 export interface ResolverOptions {
-
 	/**
 	 * 是否允许缓存解析结果
 	 * @default true
 	 */
 	cache?: boolean
-
 	/**
 	 * 解析的路径别名
 	 * @default { "~": rootDir }
@@ -638,55 +636,47 @@ export interface ResolverOptions {
 	 * ```
 	 */
 	alias?: { [name: string]: string | ((input: string, ...parts: string[]) => string) | (string | ((input: string, ...parts: string[]) => string) | false)[] | false }
-
 	/**
 	 * `package.json` 中包含 `alias` 信息的字段名
 	 * @default ["browser"]
 	 */
 	aliasFields?: string[]
-
 	/**
 	 * 所有描述文件名
 	 * @default ["package.json"]
 	 */
 	descriptionFiles?: string[]
-
 	/**
 	 * 是否强制区分路径大小写
-	 * @default false
+	 * @description 设置后可以避免不同环境出现不同的打包结果
+	 * @default true
 	 */
 	enforceCaseSensitive?: boolean
-
 	/**
 	 * 是否强制引用模块时使用扩展名
 	 * @default false
 	 */
 	enforceExtension?: boolean
-
 	/**
 	 * 解析模块名时尝试自动追加的扩展名
 	 * @default [".wasm", ".tsx", ".ts", ".jsx", ".mjs", ".js", ".json"]
 	 */
 	extensions?: string[]
-
 	/**
 	 * `package.json` 中包含入口模块的字段名
 	 * @default ["browser", "module", "main"]
 	 */
 	mainFields?: string[]
-
 	/**
 	 * 解析文件夹时默认使用的文件名，其中 `&` 表示所在目录名
 	 * @default ["index"]
 	 */
 	mainFiles?: string[]
-
 	/**
 	 * 要搜索的模块文件夹路径
 	 * @default ["node_modules"]
 	 */
 	modules?: string[]
-
 }
 
 /** 用于接收解析详情的上下文对象 */

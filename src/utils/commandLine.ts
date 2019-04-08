@@ -1,4 +1,4 @@
-import signalExit from "signal-exit"
+import signalExit = require("signal-exit")
 
 /**
  * 清除命令行（含缓存）

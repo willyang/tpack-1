@@ -11,7 +11,7 @@
 
 ### 1. 一切都是入口！更利于多页场景
 - 打包从 `src` 到 `dist` 文件夹，任何格式都可依赖分析
-- 以 HTML 为入口，更适合活动推广页、组件库文档和多页 Web APP
+- 以 HTML 为入口，更适合活动推广页、组件库文档和多页 WebAPP
 
 ### 2. 开箱即用
 - 零配置启动现有项目：自动打包、支持热更新（HMR, Hot Module Replacement）
@@ -26,7 +26,6 @@
 - [导出优化（Tree Shaking + Scope Hoisting）](https://github.com/tpack/tpack/wiki/导出优化)
 - [组件 API 文档自动生成](https://github.com/tpack/tpack/wiki/API-文档生成)
 - [自动化测试](https://github.com/tpack/tpack/wiki/自动化测试)
-- [兼容 Gulp 插件](https://github.com/tpack/tpack/wiki/Gulp-插件)
 
 ## 快速上手
 
@@ -41,11 +40,12 @@ npm install tpack -g
 ```html
 <html>
 <body>
+	<div id="root"></div>
     <script>
         import React from "react"
         import ReactDOM from "react-dom"
 
-        ReactDOM.render(<div>Hello world</div>, document.body)
+        ReactDOM.render(<h1>Hello, world!</h1>, document.getElementById("root"))
     </script>
 </body>
 </html>
@@ -53,7 +53,7 @@ npm install tpack -g
 
 无需配置，直接执行以下命令即可启动本地服务：
 ```bash
-tpack
+tpack -s 8086
 ```
 
 > 如果启动失败，[请点击这里](https://github.com/tpack/tpack/wiki/常见问题#启动失败)
@@ -98,20 +98,17 @@ export default {
 			modules: ["./src/components", "node_modules"] // import "x" 时，"x" 从 src/components 和 node_modules 搜索
 		},
 		externalModules: [ // node_modules 的外部资源需要拷贝到项目里，或者内联
-			{ match: "*.{png|jpg|gif|svg|wbmp|bmp|ico|jpe|jpeg|cur|webp|jfif}", minSize: 5000, outPath: "assets/images/<path>" },
-			{ match: "*.{eot|ttf|tif|tiff|woff|woff2}", minSize: 5000, outPath: "assets/fonts/<path>" },
-			{ minSize: 5000, outPath: "assets/resources/<path>" }
+			{ match: "*.{png|jpg|gif|svg|wbmp|bmp|ico|jpe|jpeg|cur|webp|jfif}", minSize: 2048, outPath: "assets/images/<name><ext>" },
+			{ match: "*.{eot|ttf|tif|tiff|woff|woff2}", minSize: 2048, outPath: "assets/fonts/<name><ext>" },
+			{ minSize: 2048, outPath: "assets/resources/<name><ext>" }
 		],
-		output: { // 最终输出相关的配置
-			publicURL: "/", // CDN 服务器路径
-		},
-
+		
 		js: {
 			commonModules: [ // JS 公共模块拆分
-				{ match: "**/node_modules", outPath: "assets/vendors.<name>.js", minSize: 10000, maxSize: 500000, maxInitialRequests: 3, maxAsyncRequests: 5 },
-				{ outPath: "assets/commons.<name>.js", minSize: 10000, maxSize: 500000, maxInitialRequests: 3, maxAsyncRequests: 5 },
+				{ match: "**/node_modules", outPath: "assets/vendors.<name>.js", minSize: 10240, maxSize: 1024000, maxInitialRequests: 3, maxAsyncRequests: 5 },
+				{ outPath: "assets/commons.<name>.js", minSize: 10240, maxSize: 1024000, maxInitialRequests: 3, maxAsyncRequests: 5 },
 			],
-			extractCSS: true, // 独立 JS 关联的 CSS 文件
+			extractCSSModules: true, // 单独提取 JS 关联的 CSS 文件
 			treeShaking: true, // 启用 Tree Shaking
 			scopeHoisting: true // 启用 Scope Hoisting
 		},
@@ -122,6 +119,10 @@ export default {
 			include: true, // 打包 <!-- #include -->
 			js: "tsx", // JS 代码默认语言
 			css: "less" // CSS 代码默认语言
+		},
+
+		output: { // 最终输出相关的配置
+			publicURL: "/", // CDN 服务器路径
 		}
 	},
 
@@ -135,7 +136,8 @@ export default {
 
 	sourceMap: true, // 生成 Source Map，方便调试
 	clean: true, // 构建前先清理 dist
-	devServer: "http://0.0.0.0:8000" // 启动开发服务器
+	devServer: "http://0.0.0.0:8000", // 启动开发服务器
+	installCommand: "npm install <module> --colors" // 用于自动安装模块的命令，设为 false 可禁用自动下载
 }
 ```
 [查看完整配置文档](https://github.com/tpack/tpack/wiki/配置)
@@ -144,8 +146,34 @@ export default {
 - [命令行](http://github.com/tpack/tpack/wiki/命令行)
 - [配置](https://github.com/tpack/tpack/wiki/配置)
 - [API](http://github.com/tpack/tpack/wiki/api)
-- [插件](https://github.com/tpack/tpack/wiki/插件)
-- [编写插件](https://github.com/tpack/tpack/wiki/编写插件)
+
+## 插件
+
+### JS
+- [Babel](https://github.com/tpack/tpack/wiki/Babel)
+- [TypeScript](https://github.com/tpack/tpack/wiki/TypeScript)
+- [CoffeeScript](https://github.com/tpack/tpack/wiki/CoffeeScript)
+
+### CSS
+- [Less](https://github.com/tpack/tpack/wiki/Less)
+- [Sass](https://github.com/tpack/tpack/wiki/Sass)
+- [Stylus](https://github.com/tpack/tpack/wiki/Stylus)
+- [PostCSS](https://github.com/tpack/tpack/wiki/PostCSS)
+- [Autoprefixer](https://github.com/tpack/tpack/wiki/Autoprefixer)
+
+### 模板
+- [Vue](https://github.com/tpack/tpack/wiki/Vue)
+
+### 压缩
+- [UglifyJS](https://github.com/tpack/tpack/wiki/UglifyJS)
+- [CleanCSS](https://github.com/tpack/tpack/wiki/CleanCSS)
+- [HTMLMinify](https://github.com/tpack/tpack/wiki/HTMLMinify)
+
+### 其它
+- [Gulp 插件](https://github.com/tpack/tpack/wiki/Gulp-插件)
+- [Webpack-loader](https://github.com/tpack/tpack/wiki/Loader)
+
+[查看更多插件](https://github.com/tpack/tpack/wiki/插件)
 
 ## 脚手架
 - [展示型网站(jQuery)](https://github.com/tpack/tpack/wiki/脚手架-jQuery)

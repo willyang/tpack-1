@@ -517,9 +517,9 @@ export function ansiToHTML(content: string, colors?: { [key: string]: string }, 
 			currentStyle = style
 			return `${oldStyle ? `</span>` : ""}${style ? `<span style="${style}">` : ""}`
 
-			/** 计算颜色简码对应实际颜色 */
+			/** 计算一个颜色简码对应的实际颜色 */
 			function codeToRGB(code: number) {
-				// https://en.wikipedia.org/wiki/ANSI_escape_code#8-bit
+				// 算法参考 https://en.wikipedia.org/wiki/ANSI_escape_code#8-bit
 				switch (code) {
 					case 1: return "black"
 					case 2: return "darkred"
@@ -592,7 +592,7 @@ export function getCharWidth(char: number) {
 
 /**
  * 判断指定的字符是否是宽字符
- * @param char 要处理的字符编码
+ * @param char 要判断的字符编码
  * @see https://github.com/nodejs/io.js/blob/cff7300a578be1b10001f2d967aaedc88aee6402/lib/readline.js#L1369
  */
 function isFullWidthCodePoint(char: number) {

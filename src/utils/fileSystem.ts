@@ -113,6 +113,7 @@ export class FileSystem {
 	 */
 	createDir(path: string) {
 		return new Promise<boolean>((resolve, reject) => {
+			// 取消用户缺少的权限
 			mkdir(path, 0o777 & ~process.umask(), error => {
 				if (error) {
 					switch (error.code) {
@@ -333,7 +334,7 @@ export class FileSystem {
 	async glob(pattern: Pattern, options: PatternOptions = {}) {
 		const matcher = pattern instanceof Matcher ? pattern : new Matcher(pattern, options)
 		const files: string[] = []
-		await Promise.all(matcher.getBases(this.isCaseInsensitive).map(base => this.walk(base, {
+		await Promise.all(matcher.getBases(options.ignoreCase).map(base => this.walk(base, {
 			dir: matcher.excludeMatcher ? path => !matcher.excludeMatcher!.test(path) : undefined,
 			file(path) {
 				if (matcher.test(path)) {

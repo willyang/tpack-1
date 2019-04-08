@@ -19,7 +19,7 @@ export class EventEmitter {
 		if (eventListeners) {
 			if (Array.isArray(eventListeners)) {
 				eventListeners.push(eventListener)
-			} else if (eventListeners) {
+			} else {
 				events.set(eventName, [eventListeners, eventListener])
 			}
 		} else {
