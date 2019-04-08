@@ -134,12 +134,14 @@ export class Logger {
 				return console.error(`${color(`${++this.errorOrWarningCounter}) ${this.errorIcon}`, ConsoleColor.brightRed)}${content}`)
 			case LogLevel.warning:
 				return console.warn(`${color(`${++this.errorOrWarningCounter}) ${this.warningIcon}`, ConsoleColor.brightYellow)}${content}`)
-			case LogLevel.fatal:
-				return console.error(`${color(this.fatalIcon, ConsoleColor.brightRed)}${content}`)
-			case LogLevel.success:
-				return console.info(`${color(this.successIcon, ConsoleColor.brightGreen)}${content}`)
 			case LogLevel.info:
 				return console.info(content)
+			case LogLevel.fatal:
+				return console.error(`${color(formatDate(new Date(), "[HH:mm:ss]"), ConsoleColor.brightBlack)} ${color(this.fatalIcon, ConsoleColor.brightRed)}${content}`)
+			case LogLevel.success:
+				return console.info(`${color(formatDate(new Date(), "[HH:mm:ss]"), ConsoleColor.brightBlack)} ${color(this.successIcon, ConsoleColor.brightGreen)}${content}`)
+			case LogLevel.verbose:
+				return console.debug(`${color(formatDate(new Date(), "[HH:mm:ss]"), ConsoleColor.brightBlack)} ${content}`)
 			default:
 				return console.log(content)
 		}
@@ -283,7 +285,7 @@ export class Logger {
 	begin(log: string | Error | LogEntry) {
 		const content = this.formatLog(log)
 		if (this.logLevel === LogLevel.verbose) {
-			this.verbose(`${color(formatDate(new Date(), "[HH:mm:ss]"), ConsoleColor.brightBlack)} ${color(i18n`Starting`, ConsoleColor.brightMagenta)} ${content}`)
+			this.verbose(`${color(i18n`Starting`, ConsoleColor.brightMagenta)} ${content}`)
 		} else if (this.logLevel < LogLevel.silent && this.spinner) {
 			this.showSpinner(content)
 		}
