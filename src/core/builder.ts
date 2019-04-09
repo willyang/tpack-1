@@ -11,11 +11,12 @@ import { appendFileName, containsPath, getDir, isAbsolutePath, normalizePath, pa
 import { exec, ExecResult } from "../utils/process"
 import { createSourceMappingURLComment, SourceMapObject } from "../utils/sourceMap"
 import { isAbsoluteURL } from "../utils/url"
-import { DevServerOptions } from "./devServer"
+import { DevServerOptions, DevServer } from "./devServer"
 import { i18n } from "./i18n"
 import { Logger, LoggerOptions, LogLevel } from "./logger"
 import { Module, ModuleLogEntry, ModuleState } from "./module"
 import { ResolveContext, Resolver, ResolverOptions } from "./resolver"
+import { WatcherOptions, Watcher } from "./watcher"
 
 /** 表示一个模块构建器 */
 export class Builder extends EventEmitter {
@@ -70,6 +71,7 @@ export class Builder extends EventEmitter {
 		this.rootDir = resolvePath(baseDir, options.rootDir != undefined ? options.rootDir : "src")
 		this.matcher = this.createMatcher(options.match, options.exclude != undefined ? options.exclude : ["**/node_modules/**", "**/package.json"])
 		this.outDir = resolvePath(baseDir, options.outDir != undefined ? options.outDir : "dist")
+		this.filter = options.filter != undefined ? this.createMatcher(options.filter) : undefined
 
 		this.compilerRoot = resolveProcessorRules.call(this, options.compilers || require("../../configs/compilers.json"), "compilers")
 		this.optimizerRoot = options.optimize ? resolveProcessorRules.call(this, options.optimizers || require("../../configs/optimizers.json"), "optimizers") : undefined
@@ -82,13 +84,13 @@ export class Builder extends EventEmitter {
 			match: "**/*.js",
 			...bundlerOptions.resolver
 		}]).map(resolver => ({
-			matcher: resolver.match != undefined && resolver.exclude != undefined ? this.createMatcher(resolver.match || (() => true), resolver.exclude) : undefined,
+			matcher: resolver.match != undefined || resolver.exclude != undefined ? this.createMatcher(resolver.match || (() => true), resolver.exclude) : undefined,
 			before: resolver.before,
 			after: resolver.after,
 			resolver: resolver.type === "relative" ? undefined : new Resolver(resolver)
 		}))
 		this.externalModules = (bundlerOptions.externalModules || require("../../configs/externalModules.json") as ExternalModuleRule[]).map(externalModule => ({
-			matcher: externalModule.match != undefined && externalModule.exclude != undefined ? this.createMatcher(externalModule.match || (() => true), externalModule.exclude) : undefined,
+			matcher: externalModule.match != undefined || externalModule.exclude != undefined ? this.createMatcher(externalModule.match || (() => true), externalModule.exclude) : undefined,
 			matchType: externalModule.matchType,
 			minSize: externalModule.minSize || 0,
 			outPath: typeof externalModule.outPath === "string" ? (module: Module, builder: Builder) => {
@@ -160,12 +162,17 @@ export class Builder extends EventEmitter {
 		this.logger = options.logger instanceof Logger ? options.logger : new Logger(options.logger)
 		this.reporter = options.reporter === undefined || options.reporter === "summary" ? this.summaryReporter : options.reporter ? typeof options.reporter === "function" ? options.reporter : this.detailReporter : undefined
 
-		// todo watch
-		// todo devServer
-		//this.watch = !!options.watch
-		// this.devServer = options.devServer
+		if (options.watch || options.devServer) {
+			this.watcher = new Watcher(this, {
+				lazyBuild: !!options.devServer,
+				...(typeof options.watch === "object" ? options.watch : undefined)
+			})
+		}
+		if (options.devServer) {
+			this.devServer = new DevServer(this, options.devServer === true ? undefined : typeof options.devServer === "object" ? options.devServer : { url: options.devServer })
+		}
 
-		this.autoInstallModules = !!options.installCommand
+		this.autoInstallModules = options.installCommand !== false
 		this.installCommand = options.installCommand || "npm install <module> --colors"
 
 		if (options.plugins) {
@@ -185,7 +192,7 @@ export class Builder extends EventEmitter {
 				const id = `${name}-${i}`
 				const resolved: ResolvedProcessorRule = {
 					name: id,
-					matcher: rule.match != undefined && rule.exclude != undefined ? this.createMatcher(rule.match || (() => true), rule.exclude) : undefined,
+					matcher: rule.match != undefined || rule.exclude != undefined ? this.createMatcher(rule.match || (() => true), rule.exclude) : undefined,
 					processor: rule.process ? rule as Processor : undefined
 				}
 				if (Array.isArray(rule.use)) {
@@ -378,8 +385,10 @@ export class Builder extends EventEmitter {
 			},
 			watch(value, name) {
 				assertBooleanOrObject(value, name, {
+					lazyBuild: assertBoolean,
 					usePolling: assertBoolean,
-					interval: assertNumber
+					interval: assertNumber,
+					delay: assertNumber,
 				})
 			},
 			devServer(value, name) {
@@ -411,6 +420,7 @@ export class Builder extends EventEmitter {
 					ignoreCase: assertBoolean,
 				})
 			},
+			filter: assertPattern,
 			encoding: assertString,
 			noPathCheck: assertBoolean,
 			noEmit: assertBoolean,
@@ -545,7 +555,7 @@ export class Builder extends EventEmitter {
 
 		/** 确认变量为合法的模式 */
 		function assertPattern(value: any, name: string) {
-			if (typeof value === "string" || value instanceof RegExp || typeof value === "function") {
+			if (typeof value === "string" || value instanceof RegExp || typeof value === "function" || value instanceof Matcher) {
 				return
 			}
 			if (Array.isArray(value)) {
@@ -717,13 +727,27 @@ export class Builder extends EventEmitter {
 
 	// #region 入口
 
+	/** 当前正在使用的服务器 */
+	readonly devServer?: DevServer
+
 	/**
 	 * 根据配置执行整个构建流程
-	 * @param filter 过滤要构建的路径匹配器
 	 */
-	async run(filter?: Pattern) {
-		// todo
-		return await this.build(filter)
+	async run() {
+		if (this.watcher) {
+			if (this.devServer) {
+				this.devServer.start()
+			}
+			this.watcher.start()
+			// 监听模式忽略错误
+			try {
+				await this.build(this.watcher.lazyBuild)
+			} catch (e) {
+				this.logger.error(e)
+			}
+			return 0
+		}
+		return (await this.build()).errorCount
 	}
 
 	// #endregion
@@ -736,12 +760,35 @@ export class Builder extends EventEmitter {
 	/** 判断是否仅构建但不保存模块 */
 	readonly noEmit: boolean
 
+	/** 匹配本次构建文件的匹配器 */
+	readonly filter?: Matcher
+
+	/** 正在构建的确认对象 */
+	private _buildPromise?: Promise<BuildResult>
+
 	/**
 	 * 构建整个项目
-	 * @param filter 过滤要构建的路径匹配器
 	 * @param pathOnly 是否只处理模块输出路径
 	 */
-	async build(filter?: Pattern, pathOnly?: boolean) {
+	async build(pathOnly?: boolean) {
+		if (this._buildWoker) {
+			try {
+				await this._buildWoker
+			} catch { }
+		}
+		try {
+			this._buildPromise = this._buildWoker(pathOnly)
+			return await this._buildPromise
+		} finally {
+			this._buildPromise = undefined
+		}
+	}
+
+	/**
+	 * 构建整个项目
+	 * @param pathOnly 是否只处理模块输出路径
+	 */
+	private async _buildWoker(pathOnly?: boolean) {
 		const result = new BuildResult()
 		const buildTask = this.logger.begin(i18n`Start building...`)
 		try {
@@ -752,7 +799,7 @@ export class Builder extends EventEmitter {
 			this.logger.progress(result.progress)
 
 			// 第二步：清理目标文件夹
-			if (this.clean && !filter && !pathOnly) {
+			if (this.clean && !this.filter && !pathOnly) {
 				const cleanTask = this.logger.begin(i18n`Cleaning '${this.logger.formatPath(this.outDir)}'...`)
 				try {
 					await this.fs.cleanDir(this.outDir)
@@ -765,16 +812,20 @@ export class Builder extends EventEmitter {
 			const walkTask = this.logger.begin(i18n`Searching modules...`)
 			const entryModules = result.entryModules
 			try {
-				let matcher = this.matcher
+				let baseDir = this.rootDir
+				const matcher = this.matcher
+				const filter = this.filter
+				const matcherBase = matcher.base
+				if (matcherBase && containsPath(baseDir, matcherBase)) baseDir = matcherBase
 				if (filter) {
-					matcher = new Matcher(this.matcher)
-					matcher.include(filter, this.globOptions)
+					const filterBase = filter.base
+					if (filterBase && containsPath(baseDir, filterBase)) baseDir = filterBase
 				}
 				// 全量构建，清理所有模块缓存
-				await this.fs.walk(matcher.base || this.rootDir, {
+				await this.fs.walk(baseDir, {
 					dir: matcher.excludeMatcher ? path => !matcher.excludeMatcher!.test(path) : undefined,
 					file: path => {
-						if (matcher.test(path)) {
+						if (matcher.test(path) && (!filter || filter.test(path))) {
 							const module = this.getModule(path)
 							if (pathOnly) {
 								module.data = ""
@@ -832,6 +883,9 @@ export class Builder extends EventEmitter {
 				const promises: Promise<void>[] = []
 				for (const module of entryModules) {
 					await this._emitModule(module)
+					if (pathOnly) {
+						module.reset()
+					}
 					if (this.noEmit || pathOnly) {
 						result.doneTaskCount++
 						this.logger.progress(result.progress)
@@ -855,7 +909,7 @@ export class Builder extends EventEmitter {
 			this.logger.end(buildTask)
 			this.logger.reset()
 		}
-		if (this.reporter) {
+		if (this.reporter && !pathOnly) {
 			this.reporter(result, this)
 		}
 		return result
@@ -874,12 +928,21 @@ export class Builder extends EventEmitter {
 	/** 当一个模块正在生成时缓存其它待生成的模块列表 */
 	private readonly _pendingModules: Module[] = []
 
+	/** 当前正在使用的监听器 */
+	readonly watcher?: Watcher
+
 	/**
 	 * 获取最终生成的模块
 	 * @param outPath 模块的最终保存绝对路径
 	 * @returns 返回一个模块，模块的状态表示其是否已生成成功，如果模块不存在则返回 `undefined`
 	 */
 	async getEmittedModule(outPath: string) {
+		// 等待全部构建
+		if (this._buildWoker) {
+			try {
+				await this._buildWoker
+			} catch { }
+		}
 		// 模块不存在或已生成
 		const module = this.emittedModules.get(outPath)
 		if (!module || module.state === ModuleState.emitted) {
@@ -923,30 +986,34 @@ export class Builder extends EventEmitter {
 	/**
 	 * 记录某个模块被更改
 	 * @param path 被更改的模块绝对路径
+	 * @returns 返回受影响的模块数
 	 */
 	commitChange(path: string) {
 		const module = this.modules.get(path)
 		if (module) {
-			if (module.state !== ModuleState.changed) {
-				this._updateModule(module, ModuleState.changed, true)
+			if (module.state === ModuleState.changed) {
+				return 0
 			}
+			return this._updateModule(module, ModuleState.changed, true)
 		} else {
-			this._updateReference(path)
+			return this._updateReference(path)
 		}
 	}
 
 	/**
 	 * 记录某个模块已删除
 	 * @param path 被删除的模块绝对路径
+	 * @returns 返回受影响的模块数
 	 */
 	commitDelete(path: string) {
 		const module = this.modules.get(path)
 		if (module) {
-			if (module.state !== ModuleState.deleted) {
-				this._updateModule(module, ModuleState.deleted, true)
+			if (module.state === ModuleState.deleted) {
+				return 0
 			}
+			return this._updateModule(module, ModuleState.deleted, true)
 		} else {
-			this._updateReference(path)
+			return this._updateReference(path)
 		}
 	}
 
@@ -955,18 +1022,12 @@ export class Builder extends EventEmitter {
 	 * @param module 被更改的模块
 	 * @param state 新的模块状态
 	 * @param fileChanged 如果是用户直接改动则为 `true`，如果是因为引用关系间接改动则为 `false`
+	 * @returns 返回受影响的模块数
 	 */
 	private async _updateModule(module: Module, state: ModuleState, fileChanged: boolean) {
 		// 正在生成阶段，等待生成结束
 		if (this._emitPromise) {
 			await this._emitPromise
-		}
-		// 如果模块已生成，删除已生成模块
-		if (module.state === ModuleState.emitted && !module.noEmit) {
-			const emittedModule = this.emittedModules.get(module.path)
-			if (emittedModule === module) {
-				this.emittedModules.delete(module.path)
-			}
 		}
 		if (this._loadPromise) {
 			// 正在加载模块阶段，重新加载对应的模块
@@ -985,23 +1046,26 @@ export class Builder extends EventEmitter {
 			module.reset()
 		}
 		this.emit("updateModule", module, fileChanged)
-		this._updateReference(module.originalPath)
+		return (await this._updateReference(module.originalPath)) + 1
 	}
 
 	/**
 	 * 更新引用指定模块的所有模块
 	 * @param path 被更改的路径
+	 * @returns 返回受影响的模块数
 	 */
-	private _updateReference(path: string) {
+	private async _updateReference(path: string) {
+		let count = 0
 		const references = this.references.get(path)
 		if (references) {
 			for (const reference of references) {
 				if (reference.state & ModuleState.updated) {
 					continue
 				}
-				this._updateModule(reference, ModuleState.changed, false)
+				count += await this._updateModule(reference, ModuleState.changed, false)
 			}
 		}
+		return count
 	}
 
 	/** 获取每个模块更新后受影响的模块列表，键为更新的模块绝对路径，值为所有受影响的模块对象 */
@@ -1019,6 +1083,9 @@ export class Builder extends EventEmitter {
 			this.references.set(reference, list)
 		}
 		list.add(module)
+		if (this.watcher) {
+			this.watcher.add(reference)
+		}
 	}
 
 	/**
@@ -1030,6 +1097,9 @@ export class Builder extends EventEmitter {
 		const list = this.references.get(reference)
 		if (list) {
 			list.delete(module)
+			if (this.watcher) {
+				this.watcher.remove(reference)
+			}
 		}
 	}
 
@@ -1352,6 +1422,9 @@ export class Builder extends EventEmitter {
 					module.type = this.getMimeType(module.ext)
 				}
 				module.state = ModuleState.loaded
+				if (this.watcher && !module.isEntryModule) {
+					this.watcher.add(module.originalPath)
+				}
 				this.emit("loadModule", module)
 				break
 			}
@@ -1403,6 +1476,10 @@ export class Builder extends EventEmitter {
 						let use = processor.use!
 						if (typeof use === "string") {
 							use = await this.require(use) as ProcessorFactory
+							// 支持 ES6 模块
+							if (typeof use !== "function" && (use as any).__esModule && (use as any).default != null) {
+								use = (use as any).default as ProcessorFactory
+							}
 						}
 						// 如果有多个模块都需要使用此处理器，第一次会加载处理器并创建处理器实例，下一次只需等待
 						if (!processor.processor) {
@@ -1585,6 +1662,9 @@ export class Builder extends EventEmitter {
 		}
 		try {
 			// 避免重复生成
+			if (module.state !== ModuleState.loaded) {
+				return
+			}
 			module.state = ModuleState.emitting
 			// 生成模块
 			const bundler = module.bundler
@@ -1924,8 +2004,8 @@ export class Builder extends EventEmitter {
 	 */
 	async require(module: string, autoInstallModules = this.autoInstallModules): Promise<any> {
 		// 从当前程序安装路径查找模块
-		const { createRequireFromPath } = require("module")
-		const localRequire = createRequireFromPath(this.baseDir) as typeof require
+		const { createRequireFromPath, Module } = require("module")
+		const localRequire = createRequireFromPath(resolvePath(this.baseDir, "tpack.config.js")) as typeof require
 		try {
 			return localRequire(module)
 		} catch (e) {
@@ -1945,6 +2025,8 @@ export class Builder extends EventEmitter {
 			}
 		}
 		// 安装完成后重新加载模块
+		// Hack: 如果无法找到模块，Node.js loader 会缓存目录的状态，调用此函数清除状态
+		Module.prototype._compile("", ".js")
 		await this.installModule(module)
 		return await this.require(module, false)
 	}
@@ -2362,18 +2444,7 @@ export interface BuilderOptions {
 	 */
 	reporter?: "summary" | "detail" | boolean | ((result: BuildResult, builder: Builder) => void)
 	/** 是否监听文件改动并主动重新构建 */
-	watch?: boolean | {
-		/**
-		 * 是否采用轮询监听的方式
-		 * @default false
-		 */
-		usePolling?: boolean
-		/**
-		 * 轮询的间隔毫秒数
-		 * @default 500
-		 */
-		interval?: number
-	}
+	watch?: boolean | WatcherOptions
 	/**
 	 * 是否启动本地开发服务器
 	 * `true`（默认）: 使用默认端口（根据项目名自动决定）启动开发服务器
@@ -2405,6 +2476,8 @@ export interface BuilderOptions {
 	 * 配置中所有通配符的选项
 	 */
 	glob?: PatternOptions
+	/** 筛选本次需要构建的文件，可以是通配符或正则表达式等，默认为所有非点开头的文件 */
+	filter?: Pattern
 	/**
 	 * 读取文本文件内容时，默认使用的文件编码
 	 * @description 默认仅支持 `utf8`，如果需要支持其它编码，需安装相应依赖库

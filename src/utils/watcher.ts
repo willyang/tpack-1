@@ -14,59 +14,6 @@ import { containsPath } from "./path"
  */
 export class Watcher extends EventEmitter {
 
-	// #region 监听事件
-
-	/**
-	 * 判断是否忽略指定的路径
-	 * @param path 要判断的文件或文件夹绝对路径
-	 */
-	protected ignored(path: string) { return false }
-
-	/**
-	 * 当监听到文件删除后执行
-	 * @param path 相关的文件绝对路径
-	 * @param lastWriteTime 文件被删除前最后一次的修改时间
-	 */
-	protected onDelete(path: string, lastWriteTime: number) { this.emit("delete", path, lastWriteTime) }
-
-	/**
-	 * 当监听到文件夹删除后执行
-	 * @param path 相关的文件夹绝对路径
-	 * @param lastEntries 文件夹被删除前最后一次的文件列表
-	 */
-	protected onDeleteDir(path: string, lastEntries: string[]) { this.emit("deleteDir", path, lastEntries) }
-
-	/**
-	 * 当监听到文件创建后执行
-	 * @param path 相关的文件绝对路径
-	 * @param stats 文件属性对象
-	 */
-	protected onCreate(path: string, stats: Stats) { this.emit("create", path, stats) }
-
-	/**
-	 * 当监听到文件夹创建后执行
-	 * @param path 相关的文件夹绝对路径
-	 * @param entries 文件夹内的文件列表
-	 */
-	protected onCreateDir(path: string, entries: string[]) { this.emit("createDir", path, entries) }
-
-	/**
-	 * 当监听到文件改变后执行
-	 * @param path 相关的文件绝对路径
-	 * @param stats 相关的文件属性对象
-	 * @param lastWriteTime 文件的最新修改时间
-	 */
-	protected onChange(path: string, stats: Stats, lastWriteTime: number) { this.emit("change", path, stats, lastWriteTime) }
-
-	/**
-	 * 当监听发生错误后执行
-	 * @param error 相关的错误对象
-	 * @param path 相关的文件绝对路径
-	 */
-	protected onError(error: NodeJS.ErrnoException, path: string) { this.emit("error", error, path) }
-
-	// #endregion
-
 	// #region 添加和删除
 
 	/**
@@ -78,7 +25,7 @@ export class Watcher extends EventEmitter {
 		path = resolve(path)
 		this._initStats(path, error => {
 			if (this.watchOptions.recursive) {
-				for (const key in this._watchers) {
+				for (const key of this._watchers.keys()) {
 					// 如果已经监听父文件夹，则不重复监听子文件夹
 					if (containsPath(key, path)) {
 						return callback && callback.call(this, null, path)
@@ -94,21 +41,21 @@ export class Watcher extends EventEmitter {
 					error = e
 				}
 			} else {
-				if (!(path in this._watchers)) {
+				if (!this._watchers.has(path)) {
 					try {
 						this.createNativeWatcher(path, true)
 					} catch (e) {
 						error = e
 					}
 				}
-				for (const key in this._stats) {
+				for (const [key, value] of this._stats.entries()) {
 					// 如果子文件夹原来是根监听器，则根监听器改为父监听器
-					const watcher = this._watchers[key]
+					const watcher = this._watchers.get(key)
 					if (watcher && watcher.root && path !== key && containsPath(path, key)) {
 						watcher.root = false
 					}
 					// 开始监听子文件夹
-					if (!watcher && typeof this._stats[key] === "object") {
+					if (!watcher && typeof value === "object") {
 						try {
 							this.createNativeWatcher(key, false)
 						} catch (e) {
@@ -128,13 +75,13 @@ export class Watcher extends EventEmitter {
 	remove(path: string) {
 		path = resolve(path)
 		if (this.watchOptions.recursive) {
-			if (path in this._watchers) {
+			if (this._watchers.has(path)) {
 				this.removeNativeWatcher(path)
 			}
 		} else {
-			const watcher = this._watchers[path]
+			const watcher = this._watchers.get(path)
 			if (watcher && watcher.root) {
-				for (const key in this._watchers) {
+				for (const key of this._watchers.keys()) {
 					if (containsPath(path, key)) {
 						this.removeNativeWatcher(key)
 					}
@@ -148,7 +95,7 @@ export class Watcher extends EventEmitter {
 	 * @param callback 删除完成后的回调函数
 	 */
 	close(callback?: () => void) {
-		for (const path in this._watchers) {
+		for (const path of this._watchers.keys()) {
 			this.removeNativeWatcher(path)
 		}
 		if (this._resolveChangesTimer) {
@@ -156,7 +103,7 @@ export class Watcher extends EventEmitter {
 			delete this._resolveChangesTimer
 		}
 		const close = () => {
-			this._stats = { __proto__: null! }
+			this._stats.clear()
 			callback && callback()
 		}
 		if (this._pending) {
@@ -170,10 +117,7 @@ export class Watcher extends EventEmitter {
 	 * 判断当前监听器是否正在监听
 	 */
 	get isWatching() {
-		for (const _ in this._watchers) {
-			return true
-		}
-		return false
+		return this._watchers.size > 0
 	}
 
 	// #endregion
@@ -181,7 +125,7 @@ export class Watcher extends EventEmitter {
 	// #region 底层监听
 
 	/** 存储所有原生监听器对象 */
-	private _watchers: { [path: string]: NativeFSWatcher } = { __proto__: null! }
+	private readonly _watchers = new Map<string, NativeFSWatcher>()
 
 	/**
 	 * 创建指定路径的原生监听器
@@ -189,7 +133,7 @@ export class Watcher extends EventEmitter {
 	 * @param root 标记当前监听器是否是根监听器
 	 */
 	protected createNativeWatcher(path: string, root: boolean) {
-		const isFile = typeof this._stats[path] === "number"
+		const isFile = typeof this._stats.get(path) === "number"
 		const polling = this.usePolling != undefined ? this.usePolling : isFile
 		let watcher: NativeFSWatcher
 		if (polling) {
@@ -220,7 +164,8 @@ export class Watcher extends EventEmitter {
 			}) as NativeFSWatcher
 		}
 		watcher.root = root
-		return this._watchers[path] = watcher
+		this._watchers.set(path, watcher)
+		return watcher
 	}
 
 	/** 获取或设置传递给原生监听器的选项 */
@@ -245,8 +190,8 @@ export class Watcher extends EventEmitter {
 	 * @param path 要删除监听的文件或文件夹绝对路径
 	 */
 	protected removeNativeWatcher(path: string) {
-		this._watchers[path].close()
-		delete this._watchers[path]
+		this._watchers.get(path)!.close()
+		this._watchers.delete(path)
 	}
 
 	/**
@@ -259,12 +204,10 @@ export class Watcher extends EventEmitter {
 		if (this.ignored(path)) {
 			return
 		}
-		if (force && typeof this._stats[path] === "number") {
-			this._stats[path] = -1
+		if (force && typeof this._stats.get(path) === "number") {
+			this._stats.set(path, -1)
 		}
-		if (this._pendingChanges.indexOf(path) < 0) {
-			this._pendingChanges.push(path)
-		}
+		this._pendingChanges.add(path)
 		if (!this._resolveChangesTimer) {
 			this._resolveChangesTimer = setTimeout(Watcher._resolveChanges, this.delay, this)
 		}
@@ -272,7 +215,7 @@ export class Watcher extends EventEmitter {
 
 	/**
 	 * 获取或设置监听延时回调的毫秒数
-	 * @desc 设置一定的延时可以避免在短时间内重复处理相同的文件
+	 * @description 设置一定的延时可以避免在短时间内重复处理相同的文件
 	 */
 	delay = 151
 
@@ -280,7 +223,7 @@ export class Watcher extends EventEmitter {
 	usePolling?: boolean
 
 	/** 存储所有已挂起的发生改变的路径 */
-	private _pendingChanges: string[] = []
+	private readonly _pendingChanges = new Set<string>()
 
 	/** 存储等待解析已挂起的更改的计时器 */
 	private _resolveChangesTimer?: any
@@ -292,13 +235,13 @@ export class Watcher extends EventEmitter {
 	private static _resolveChanges(watcher: Watcher) {
 		delete watcher._resolveChangesTimer
 		for (const pendingChange of watcher._pendingChanges) {
-			if (typeof watcher._stats[pendingChange] === "object") {
+			if (typeof watcher._stats.get(pendingChange) === "object") {
 				watcher._updateDirStats(pendingChange)
 			} else {
 				watcher._updateFileStats(pendingChange)
 			}
 		}
-		watcher._pendingChanges.length = 0
+		watcher._pendingChanges.clear()
 	}
 
 	/**
@@ -306,7 +249,7 @@ export class Watcher extends EventEmitter {
 	 * 如果路径是一个文件夹，则值为所有直接子文件和子文件夹的名称数组
 	 * 如果路径是一个文件，则值为文件的最后修改时间
 	 */
-	private _stats: { [path: string]: string[] | number } = { __proto__: null! }
+	private readonly _stats = new Map<string, string[] | number>()
 
 	/**
 	 * 初始化指定文件或文件夹及子文件的状态对象
@@ -315,7 +258,7 @@ export class Watcher extends EventEmitter {
 	 * @param stats 当前路径的属性对象，提供此参数可避免重新查询
 	 */
 	private _initStats(path: string, callback: (error: NodeJS.ErrnoException | null) => void, stats?: Stats) {
-		const oldStats = this._stats[path]
+		const oldStats = this._stats.get(path)
 		if (oldStats != undefined) {
 			if (typeof oldStats === "object") {
 				this._initDirStats(path, callback, oldStats)
@@ -335,13 +278,13 @@ export class Watcher extends EventEmitter {
 				}
 			})
 		} else if (stats.isFile()) {
-			this._stats[path] = stats.mtime.getTime()
+			this._stats.set(path, stats.mtime.getTime())
 			callback(null)
 		} else if (stats.isDirectory()) {
 			this._pending++
 			readdir(path, (error, entries) => {
 				if (!error) {
-					this._stats[path] = entries
+					this._stats.set(path, entries)
 					this._initDirStats(path, callback, entries)
 				} else if (error.code === "EMFILE" || error.code === "ENFILE") {
 					this._pending++
@@ -407,17 +350,17 @@ export class Watcher extends EventEmitter {
 				}
 			} else if (stats.isFile()) {
 				const newMTime = stats.mtime.getTime()
-				const prevStats = this._stats[path]
+				const prevStats = this._stats.get(path)
 				if (typeof prevStats === "number") {
 					if (prevStats !== newMTime) {
-						this._stats[path] = newMTime
+						this._stats.set(path, newMTime)
 						this.onChange(path, stats, prevStats)
 					}
 				} else {
 					if (prevStats != undefined) {
 						this._removeStats(path)
 					}
-					this._stats[path] = newMTime
+					this._stats.set(path, newMTime)
 					this.onCreate(path, stats)
 				}
 			} else if (stats.isDirectory()) {
@@ -447,32 +390,32 @@ export class Watcher extends EventEmitter {
 					this.onError(error, path)
 				}
 			} else {
-				if (!this.watchOptions.recursive && !(path in this._watchers) && this.isWatching) {
+				if (!this.watchOptions.recursive && !this._watchers.has(path) && this.isWatching) {
 					try {
 						this.createNativeWatcher(path, false)
 					} catch (e) {
 						this.onError(e, path)
 					}
 				}
-				const prevStats = this._stats[path]
+				const prevStats = this._stats.get(path)
 				if (typeof prevStats === "object") {
 					for (const entry of prevStats) {
 						if (entries.indexOf(entry) < 0) {
 							this._removeStats(join(path, entry))
 						}
 					}
-					this._stats[path] = entries
+					this._stats.set(path, entries)
 				} else {
 					if (prevStats != undefined) {
 						this.onDelete(path, prevStats)
 					}
-					this._stats[path] = entries
+					this._stats.set(path, entries)
 					this.onCreateDir(path, entries)
 				}
 				for (const entry of entries) {
 					const child = join(path, entry)
 					if (!this.ignored(child)) {
-						const childStats = this._stats[child]
+						const childStats = this._stats.get(child)
 						if (typeof childStats !== "object") {
 							this._updateFileStats(child)
 						}
@@ -490,13 +433,13 @@ export class Watcher extends EventEmitter {
 	 * @param path 要删除的文件或文件夹绝对路径
 	 */
 	private _removeStats(path: string) {
-		const prevStats = this._stats[path]
+		const prevStats = this._stats.get(path)
 		if (prevStats != undefined) {
-			delete this._stats[path]
+			this._stats.delete(path)
 			if (typeof prevStats === "number") {
 				this.onDelete(path, prevStats)
 			} else {
-				const watcher = this._watchers[path]
+				const watcher = this._watchers.get(path)
 				if (watcher && !watcher.root) {
 					this.removeNativeWatcher(path)
 				}
@@ -507,6 +450,59 @@ export class Watcher extends EventEmitter {
 			}
 		}
 	}
+
+	// #endregion
+
+	// #region 监听事件
+
+	/**
+	 * 判断是否忽略指定的路径
+	 * @param path 要判断的文件或文件夹绝对路径
+	 */
+	protected ignored(path: string) { return false }
+
+	/**
+	 * 当监听到文件删除后执行
+	 * @param path 相关的文件绝对路径
+	 * @param lastWriteTime 文件被删除前最后一次的修改时间
+	 */
+	protected onDelete(path: string, lastWriteTime: number) { this.emit("delete", path, lastWriteTime) }
+
+	/**
+	 * 当监听到文件夹删除后执行
+	 * @param path 相关的文件夹绝对路径
+	 * @param lastEntries 文件夹被删除前最后一次的文件列表
+	 */
+	protected onDeleteDir(path: string, lastEntries: string[]) { this.emit("deleteDir", path, lastEntries) }
+
+	/**
+	 * 当监听到文件创建后执行
+	 * @param path 相关的文件绝对路径
+	 * @param stats 文件属性对象
+	 */
+	protected onCreate(path: string, stats: Stats) { this.emit("create", path, stats) }
+
+	/**
+	 * 当监听到文件夹创建后执行
+	 * @param path 相关的文件夹绝对路径
+	 * @param entries 文件夹内的文件列表
+	 */
+	protected onCreateDir(path: string, entries: string[]) { this.emit("createDir", path, entries) }
+
+	/**
+	 * 当监听到文件改变后执行
+	 * @param path 相关的文件绝对路径
+	 * @param stats 相关的文件属性对象
+	 * @param lastWriteTime 文件的最新修改时间
+	 */
+	protected onChange(path: string, stats: Stats, lastWriteTime: number) { this.emit("change", path, stats, lastWriteTime) }
+
+	/**
+	 * 当监听发生错误后执行
+	 * @param error 相关的错误对象
+	 * @param path 相关的文件绝对路径
+	 */
+	protected onError(error: NodeJS.ErrnoException, path: string) { this.emit("error", error, path) }
 
 	// #endregion
 

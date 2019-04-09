@@ -3,26 +3,27 @@ import { existsSync } from "fs"
 import { join, dirname, resolve } from "path"
 import { LogLevel } from "../core/logger"
 import { BuilderOptions, Builder } from "../core/builder"
-import { Matcher } from "../utils/matcher"
 
 main()
 
 /** 命令行入口 */
 async function main() {
 
-	// 优先执行本地安装的版本
+	// 优先使用本地安装的版本
 	const localCli = searchFile(["node_modules/tpack/bin/tpack.js"])
 	if (localCli && localCli !== __filename && require(localCli) !== exports) {
 		return
 	}
 
+	// 禁用未捕获的异步异常警告
 	process.on("unhandledRejection", error => {
 		if (error) {
 			console.error(error)
 		}
-		process.exit(-1)
+		process.exit(-10)
 	})
 
+	// 定义命令行参数
 	const { i18n, service } = require("../core/i18n") as typeof import("../core/i18n")
 	const { parseCommandLineArguments, formatCommandLineOptions, extensions, loadConfigFile } = require("../core/cli") as typeof import("../core/cli")
 	const commandLineOptions = {
@@ -31,9 +32,10 @@ async function main() {
 			alias: ["-?", "-h"],
 			description: "Show help",
 			execute() {
-				process.stdout.write(i18n`TPack v${version()}` + "\n\n")
-				process.stdout.write(i18n`Usage: tpack [task=default] [options]` + "\n")
-				process.stdout.write(formatCommandLineOptions(commandLineOptions) + "\n")
+				console.info(i18n`TPack v${version()}`)
+				console.info("")
+				console.info(i18n`Usage: tpack [task=default] [glob] [options]`)
+				console.info(formatCommandLineOptions(commandLineOptions))
 			}
 		},
 		"--version": {
@@ -49,7 +51,7 @@ async function main() {
 			argument: "<path>",
 			description: "Specify the current working directory",
 			apply(options: BuilderOptions, argument: string) {
-				options.baseDir = argument
+				options.baseDir = resolve(argument)
 			}
 		},
 		"--require": {
@@ -69,7 +71,7 @@ async function main() {
 		},
 		"--tasks": {
 			alias: "-t",
-			description: "Show available tasks in loaded configuration file"
+			description: "List tasks in configuration file"
 		},
 		"--init": {
 			argument: "[type]",
@@ -84,18 +86,21 @@ async function main() {
 			argument: "[[host:]port]",
 			description: "Activate inspector on [host:port]",
 			default: "127.0.0.1:9229",
-			execute() {
+			execute(argument: string | boolean) {
 				const inspector = require("inspector") as typeof import("inspector")
-				if (!inspector.url()) {
-					let host: string | undefined, port: string | undefined
-					const debug = args["--debug"]
-					if (typeof debug === "string") {
-						const colon = debug.indexOf(":")
-						host = colon < 0 ? undefined : debug.slice(0, colon)
-						port = colon < 0 ? debug : debug.slice(colon + 1)
-					}
-					inspector.open(port as any, host, true)
+				// 如果正在调试则忽略
+				if (inspector.url()) {
+					return
 				}
+				// 解析调试的地址和端口，如果未设置或设置成非法的值，Node 会自动改为默认值
+				let host: string | undefined, port: any | undefined
+				if (typeof argument === "string") {
+					const index = argument.indexOf(":")
+					host = index < 0 ? undefined : argument.slice(0, index)
+					port = index < 0 ? argument : argument.slice(index + 1)
+				}
+				// 启动调试并自动在 debugger 处中断
+				inspector.open(port, host, true)
 			}
 		},
 
@@ -109,7 +114,7 @@ async function main() {
 		},
 		"--publish": {
 			alias: "-p",
-			description: "Enable optimizers",
+			description: "Build all files with optimizers enabled and exit, disable watching and development server",
 			apply(options: BuilderOptions) {
 				options.devServer = options.watch = false
 				options.optimize = true
@@ -149,26 +154,23 @@ async function main() {
 				}
 			}
 		},
-		"--no-emit": {
-			description: "Build all files, but do not save to disk",
-			apply(options: BuilderOptions) {
-				options.noEmit = true
-			}
-		},
-		"--bail": {
-			description: "Report the first error as a hard error instead of tolerating it",
-			apply(options: BuilderOptions) {
-				options.bail = true
-			}
-		},
 
+		"--filter": {
+			group: "Build Options",
+			argument: "<glob>",
+			description: "Specify the files to build",
+			multipy: true,
+			apply(options: BuilderOptions, argument: string[]) {
+				const { Matcher } = require("../utils/matcher") as typeof import("../utils/matcher")
+				options.filter = new Matcher(argument)
+			}
+		},
 		"--output": {
 			alias: "-o",
-			group: "Build Options",
 			argument: "<dir>",
 			description: "Specify the output directory",
 			apply(options: BuilderOptions, argument: string) {
-				options.outDir = argument
+				options.outDir = resolve(argument)
 			}
 		},
 		"--clean": {
@@ -178,17 +180,17 @@ async function main() {
 				options.clean = true
 			}
 		},
-		"--match": {
-			alias: "-m",
-			argument: "<glob>",
-			description: "Specify the files to build",
-			multipy: true
+		"--no-clean": {
+			description: "Do not clean the output directory before build",
+			apply(options: BuilderOptions) {
+				options.clean = false
+			}
 		},
-		"--exclude": {
-			alias: "-x",
-			argument: "<glob>",
-			description: "Specify the files to be skipped",
-			multipy: true
+		"--no-emit": {
+			description: "Build all files, but do not write to disk",
+			apply(options: BuilderOptions) {
+				options.noEmit = true
+			}
 		},
 		"--no-path-check": {
 			description: "Disable path checking and allow overwriting source files",
@@ -210,61 +212,67 @@ async function main() {
 				options.sourceMap = false
 			}
 		},
+		"--bail": {
+			description: "Report the first error as a hard error instead of tolerating it",
+			apply(options: BuilderOptions) {
+				options.bail = true
+			}
+		},
 
 		"--silent": {
 			group: "Logging Options",
 			description: "Prevent all outputs",
 			apply(options: BuilderOptions) {
-				const loggerOptions = (options.logger || (options.logger = {}))
+				const loggerOptions = options.logger || (options.logger = {})
 				loggerOptions.logLevel = LogLevel.silent
 			}
 		},
 		"--error-only": {
 			description: "Print errors only",
 			apply(options: BuilderOptions) {
-				const loggerOptions = (options.logger || (options.logger = {}))
+				const loggerOptions = options.logger || (options.logger = {})
 				loggerOptions.logLevel = LogLevel.error
 			}
 		},
 		"--info-only": {
 			description: "Print errors, warnings and important information only",
 			apply(options: BuilderOptions) {
-				const loggerOptions = (options.logger || (options.logger = {}))
+				const loggerOptions = options.logger || (options.logger = {})
 				loggerOptions.logLevel = LogLevel.info
 			}
 		},
 		"--verbose": {
 			description: "Print all outputs",
 			apply(options: BuilderOptions) {
-				const loggerOptions = (options.logger || (options.logger = {}))
+				const loggerOptions = options.logger || (options.logger = {})
 				loggerOptions.logLevel = LogLevel.verbose
 			}
 		},
 		"--colors": {
 			description: "Enable colorized outputs",
 			apply(options: BuilderOptions) {
-				const loggerOptions = (options.logger || (options.logger = {}))
+				const loggerOptions = options.logger || (options.logger = {})
 				loggerOptions.colors = true
 			}
 		},
 		"--no-colors": {
 			description: "Disable colorized outputs",
 			apply(options: BuilderOptions) {
-				const loggerOptions = (options.logger || (options.logger = {}))
+				const loggerOptions = options.logger || (options.logger = {})
 				loggerOptions.colors = false
 			}
 		},
 		"--progress": {
 			description: "Show build progress",
 			apply(options: BuilderOptions) {
-				const loggerOptions = (options.logger || (options.logger = {}))
+				const loggerOptions = options.logger || (options.logger = {})
 				loggerOptions.spinner = true
 			}
 		},
 		"--no-progress": {
 			description: "Hide build progress",
 			apply(options: BuilderOptions) {
-				const loggerOptions = (options.logger || (options.logger = {}))
+				const loggerOptions = options.logger || (options.logger = {})
 				loggerOptions.spinner = false
 			}
 		},
@@ -296,7 +304,6 @@ async function main() {
 			default: 1,
 			apply(options: BuilderOptions, argument: string) {
 				options.parallel = +argument || 1
-				notImplemented("--parallel")
 			}
 		},
 		"--init-completion": {
@@ -333,35 +340,54 @@ async function main() {
 			commandLineErrors = [message]
 		}
 	})
+
+	// 更新区域
 	if (args["--locale"]) {
 		service.currentLocale = args["--locale"] as string
-	}
-	if (commandLineErrors) {
-		// 如果命令行解析错误，且更新了界面语言，则重新计算一次错误文案
-		if (args["--locale"]) {
+		// 更新错误文案
+		if (commandLineErrors) {
 			commandLineErrors.length = 0
 			parseCommandLineArguments(commandLineOptions, message => {
 				commandLineErrors!.push(message)
 			})
 		}
+	}
+
+	// 参数错误
+	if (commandLineErrors) {
 		for (const commandLineError of commandLineErrors) {
-			process.stderr.write(i18n`Error: ${commandLineError}` + "\n")
+			console.error(i18n`CommandLineError: ${commandLineError}`)
 		}
-		process.exitCode = -6
+		process.exitCode = -1
 		return
 	}
 
-	// 全局命令
+	// 通用命令
 	if (args["--debug"]) {
-		commandLineOptions["--debug"].execute()
+		commandLineOptions["--debug"].execute(args["--debug"] as string | boolean)
 	}
 	if (args["--require"]) {
 		commandLineOptions["--require"].execute(args["--require"] as string[])
 	}
+
+	// 获取任务名
 	let taskName = args["0"] as string | undefined
-	if (taskName && /[[\\/*?\.!\[\]\{\}]/.test(taskName)) {
+	// 将 tpack [task] *.js 转为 tpack [task] --filter *.js
+	let index: number | undefined
+	if (taskName && /[\/\\\*\?\.!\[\]\{\}]/.test(taskName)) {
 		taskName = undefined
+		index = 0
+	} else if (/[\/\\\*\?\.!\[\]\{\}]/.test(args["1"] as string)) {
+		index = 1
 	}
+	if (index !== undefined) {
+		const filter = (args["--filter"] || (args["--filter"] = [])) as string[]
+		do {
+			filter.push(args[index++] as string)
+		} while (args[index])
+	}
+
+	// 全局命令
 	if (!taskName) {
 		if (args["--help"]) {
 			return commandLineOptions["--help"].execute()
@@ -385,78 +411,66 @@ async function main() {
 		} catch { }
 	}
 
-	// 搜索配置文件
+	// 解析配置文件
 	const configFile = searchFile(args["--config"] ? [args["--config"] as string] : [".js", ...Object.keys(extensions)].map(ext => `tpack.config${ext}`))
-	const tasks = configFile ? loadConfigFile(configFile, !args["--no-es-module"]) : { default: {} }
+	const tasks = loadConfigFile(configFile || require.resolve("../../configs/tpack.config.default.js"), !args["--no-es-module"])
 	if (args["--completion"]) {
 		return notImplemented("--completion")
 	}
 	if (args["--tasks"]) {
-		process.stdout.write(i18n`Defined Tasks in '${configFile || i18n`<default config file>`}':\n${formatTaskList(Object.keys(tasks))}` + '\n')
+		console.info(i18n`Defined Tasks in '${configFile || i18n`<default config file>`}':`)
+		console.info(formatTaskList(Object.keys(tasks)))
 		return
 	}
-	if (taskName) {
-		const taskNames = searchList(tasks, taskName)
-		if (taskNames.length !== 1) {
-			process.stdout.write(i18n`Error: Task '${taskName}' is not defined in '${configFile || i18n` <default config file >`}'.` + '\n\n')
-			if (taskNames.length) {
-				process.stdout.write(i18n`Did you mean one of these?\n${formatTaskList(taskNames)}` + '\n')
-				process.exitCode = -5
-			} else {
-				process.stdout.write(i18n`Defined Tasks:\n${formatTaskList(Object.keys(tasks))}` + '\n')
-				process.exitCode = -4
-			}
-			return
+	const taskNames = searchList(tasks, taskName || "default")
+	if (taskNames.length !== 1) {
+		console.info(i18n`Error: Task '${taskName}' is not defined in '${configFile || i18n`<default config file>`}'`)
+		console.info("")
+		if (taskNames.length) {
+			console.info(i18n`Did you mean one of these?`)
+			console.info(formatTaskList(taskNames))
+			process.exitCode = -4
+		} else {
+			console.info(i18n`Defined Tasks:`)
+			console.info(formatTaskList(Object.keys(tasks)))
+			process.exitCode = -5
 		}
-		taskName = taskNames[0]
+		return
 	}
 
-	// 读取并应用配置
-	const task = tasks[taskName || "default"]
-	const options = task ? typeof task === "function" ? await task(args) : task : configFile || existsSync("src") ? {} : {
-		rootDir: ".",
-		outDir: "."
+	// 读取用户配置
+	const task = tasks[taskNames[0]]
+	const options = typeof task === "function" ? await task(args) : task
+	if (options == null || typeof options !== "object") {
+		return
 	}
-	if (typeof options === "object") {
-		const { Builder } = require("../core/builder") as typeof import("../core/builder")
-		for (const key in args) {
-			const commandOption = (commandLineOptions as any)[key]
-			if (commandOption && commandOption.apply) {
-				commandOption.apply(options, args[key])
-			}
+	// 覆盖用户配置
+	for (const key in args) {
+		const commandOption = (commandLineOptions as any)[key]
+		if (commandOption && commandOption.apply) {
+			commandOption.apply(options, args[key])
 		}
-		if (configFile) {
-			options.baseDir = resolve(dirname(configFile), options.baseDir || ".")
-		}
-		let builder: Builder
-		try {
-			builder = new Builder(options)
-		} catch (e) {
-			process.stdout.write(i18n`ConfigError: ${e.message}` + '\n')
-			process.exitCode = -3
-			return
-		}
-		// 计算忽略列表
-		let filter: Matcher | undefined
-		if (args["--match"] || args["--exclude"]) {
-			filter = builder.createMatcher(args["--match"] as string[] || (() => true), args["--exclude"] as string[])
-		}
-		for (let i = 0; args[i]; i++) {
-			const value = args[i] as string
-			if (/[\\/*?\.!\[\]\{\}]/.test(value)) {
-				if (!filter) filter = builder.createMatcher(value)
-				else filter.include(value)
-			}
-		}
-		if (!filter && configFile && process.cwd().length > dirname(configFile).length) {
-			filter = builder.createMatcher(process.cwd())
-		}
-		try {
-			process.exitCode = (await builder.run(filter)).errorCount
-		} catch (e) {
-			process.stdout.write(e.stack + '\n')
-			process.exitCode = -2
-		}
+	}
+	if (configFile) {
+		options.baseDir = resolve(dirname(configFile), options.baseDir || ".")
+	}
+
+	// 创建构建器，解析配置
+	const { Builder } = require("../core/builder") as typeof import("../core/builder")
+	let builder: Builder
+	try {
+		builder = new Builder(options)
+	} catch (e) {
+		console.error(i18n`ConfigError: ${e.message}`)
+		process.exitCode = -3
+		return
+	}
+	// 执行主逻辑
+	try {
+		process.exitCode = await builder.run()
+	} catch (e) {
+		console.error(e)
+		process.exitCode = -2
 	}
 
 	/**
@@ -509,7 +523,7 @@ async function main() {
 	}
 
 	function notImplemented(name: string) {
-		process.stderr.write(i18n`Option '${name}' is not implemented yet.` + '\n')
+		console.error(i18n`Option '${name}' is not implemented yet.`)
 		process.exit(-100)
 	}
 

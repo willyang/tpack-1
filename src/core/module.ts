@@ -45,7 +45,7 @@ export class Module {
 
 	/** 重置模块的状态 */
 	reset() {
-		if (this.state === ModuleState.changed) this.state = ModuleState.initial
+		if (this.state !== ModuleState.deleted) this.state = ModuleState.initial
 		this.path = this.originalPath
 		this.warnings = this.errors = this.sourceMap = this.sourceMapPath = this.data = this.noEmit = this.emitTime = this.bundler = this.type = undefined
 		this.reportedWarningCount = this.reportedErrorCount = 0
@@ -462,6 +462,10 @@ export interface Dependency {
 	inline?: boolean
 	/** 从目标模块依赖的符号名称，如果为空则全导入 */
 	symbols?: string[]
+	/** 依赖的来源 */
+	source?: string
+	/** 依赖的类型 */
+	type?: string
 	/** 相关的源行号（从 0 开始）*/
 	line?: number
 	/** 相关的源列号（从 0 开始）*/

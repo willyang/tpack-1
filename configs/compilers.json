@@ -1,3 +1,6 @@
 [
-
+	{
+		"match": "*.less",
+		"use": "tpack/compilers/less"
+	}
 ]

@@ -404,7 +404,7 @@ export class Logger {
 				if (this._progressPercent < 10) {
 					content = " "
 				}
-				content += `${this._progressPercent}%`
+				content += `${this._progressPercent}% `
 			}
 			if (this._spinnerText != undefined) {
 				content += this._spinnerText.replace(/[\n\r][^]*$/, "")
