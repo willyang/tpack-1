@@ -1,5 +1,5 @@
 {
 	"Option '{0}' requires an argument.": "选项“{0}”缺少参数值",
 	"Show help": "显示帮助",
-	"Usage: tpack [task=default] [options]": "用法：tpack [任务名=default] [选项]"
+	"Usage: tpack [task=default] [glob] [options]": "用法：tpack [任务名=default] [通配符] [选项]"
 }

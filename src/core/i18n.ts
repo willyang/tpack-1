@@ -1,22 +1,29 @@
+import { copyToMap } from "../utils/misc"
+
 /** 表示一个本地化服务 */
 export class LocaleService {
 
 	/** 存储当前正在使用的区域代码 */
-	private _currentLocale?: string
+	private _currentLocale!: string
 
 	/** 获取或设置当前正在使用的区域代码 */
-	get currentLocale(): string {
-		return this._currentLocale || (this.currentLocale = getDefaultLocale())
+	get currentLocale() {
+		return this._currentLocale
 	}
 	set currentLocale(value) {
 		this._currentLocale = value
 		this.dict.clear()
 		try {
-			const dictObject = require(`../locales/${value}.json`)
-			for (const key in dictObject) {
-				this.dict.set(key, dictObject[key])
-			}
+			copyToMap(require(`../../locales/${value}.json`), this.dict)
 		} catch  { }
+	}
+
+	/**
+	 * 初始化新的区域
+	 * @param locale 默认区域
+	 */
+	constructor(locale: string) {
+		this.currentLocale = locale
 	}
 
 	/** 获取当前本地语言的翻译字典 */
@@ -45,7 +52,7 @@ export class LocaleService {
 }
 
 /** 获取全局的语言服务对象 */
-export const service = new LocaleService()
+export const service = new LocaleService(getDefaultLocale())
 
 /** 获取模板字符串的本地化翻译版本 */
 export const i18n = service.i18n.bind(service)

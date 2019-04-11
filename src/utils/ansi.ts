@@ -103,9 +103,10 @@ export function removeAnsiCodes(content: string) {
 /**
  * 将内容按最大列数拆成多行
  * @param content 要处理的内容
+ * @param indent 新行的缩进空格数
  * @param columns 布局的最大列数
  */
-export function splitString(content: string, columns = process.stdout.columns || Infinity) {
+export function splitString(content: string, indent = 0, columns = process.stdout.columns || Infinity) {
 	const result: string[] = []
 	let left = 0
 	let currentWidth = 0
@@ -139,16 +140,16 @@ export function splitString(content: string, columns = process.stdout.columns ||
 			}
 		}
 		const line = content.substring(left, i).trim()
-		line && result.push(line)
+		line && result.push((result.length ? " ".repeat(indent) : "") + line)
 		// 忽略单词后的空格
 		while (i < content.length && content.charCodeAt(i) === 32 /* */) {
 			i++
 		}
 		leftBound = left = i
-		currentWidth = 0
+		currentWidth = indent
 	}
 	const line = content.substring(left, content.length).trim()
-	line && result.push(line)
+	line && result.push((result.length ? " ".repeat(indent) : "") + line)
 	return result
 }
 

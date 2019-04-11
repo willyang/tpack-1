@@ -15,6 +15,13 @@ async function main() {
 		return
 	}
 
+	// Node >= 10.12 才支持 ES2018
+	const { i18n, service } = require("../core/i18n") as typeof import("../core/i18n")
+	if (parseFloat(process.version.slice(1)) < 10.12) {
+		console.error(i18n`TPack requires Node.js >= 10.15, currently ${process.version}`)
+		console.log(i18n`Visit https://nodejs.org/ to download the Latest version`)
+	}
+
 	// 禁用未捕获的异步异常警告
 	process.on("unhandledRejection", error => {
 		if (error) {
@@ -24,7 +31,6 @@ async function main() {
 	})
 
 	// 定义命令行参数
-	const { i18n, service } = require("../core/i18n") as typeof import("../core/i18n")
 	const { parseCommandLineArguments, formatCommandLineOptions, extensions, loadConfigFile } = require("../core/cli") as typeof import("../core/cli")
 	const commandLineOptions = {
 		"--help": {
@@ -147,10 +153,13 @@ async function main() {
 			description: "Open in browser when local development server started",
 			default: "",
 			apply(options: BuilderOptions, argument: string) {
-				if (options.devServer && typeof options.devServer === "object") {
+				if (options.devServer) {
+					if (options.devServer === true) {
+						options.devServer = {}
+					} else if (typeof options.devServer !== "object") {
+						options.devServer = { url: options.devServer }
+					}
 					options.devServer.open = argument || true
-				} else {
-					options.devServer = { url: options.devServer as any, open: argument || true }
 				}
 			}
 		},
@@ -279,16 +288,13 @@ async function main() {
 		"--full-path": {
 			description: "Print absolute paths in outputs",
 			apply(options: BuilderOptions) {
-				const loggerOptions = (options.logger || (options.logger = {}))
+				const loggerOptions = options.logger || (options.logger = {})
 				loggerOptions.printFullPath = true
 			}
 		},
 		"--locale": {
 			argument: "<locale>",
-			description: "Specify the locale of messages, e.g. zh-CN",
-			apply(options: BuilderOptions, argument: string) {
-				options.locale = argument
-			}
+			description: "Specify the locale of messages, e.g. zh-CN"
 		},
 
 		"--no-es-module": {
@@ -418,7 +424,7 @@ async function main() {
 		return notImplemented("--completion")
 	}
 	if (args["--tasks"]) {
-		console.info(i18n`Defined Tasks in '${configFile || i18n`<default config file>`}':`)
+		console.info(i18n`Defined tasks in '${configFile || i18n`<default config file>`}':`)
 		console.info(formatTaskList(Object.keys(tasks)))
 		return
 	}
@@ -431,7 +437,7 @@ async function main() {
 			console.info(formatTaskList(taskNames))
 			process.exitCode = -4
 		} else {
-			console.info(i18n`Defined Tasks:`)
+			console.info(i18n`Defined tasks:`)
 			console.info(formatTaskList(Object.keys(tasks)))
 			process.exitCode = -5
 		}
@@ -496,7 +502,7 @@ async function main() {
 
 	/** 获取命令行程序的版本号 */
 	function version() {
-		return require("../package.json").version as string
+		return require("../../package.json").version as string
 	}
 
 	/**

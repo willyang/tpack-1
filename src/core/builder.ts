@@ -1,22 +1,23 @@
 import { CSSBundler, CSSBundlerOptions } from "../bundlers/css"
 import { HTMLBundler, HTMLBundlerOptions } from "../bundlers/html"
 import { JSBundler, JSBundlerOptions } from "../bundlers/js"
-import { ConsoleColor, color } from "../utils/ansi"
+import { color, ConsoleColor } from "../utils/ansi"
+import { AsyncQueue } from "../utils/asyncQueue"
 import { encodeDataUri } from "../utils/base64"
 import { EventEmitter } from "../utils/eventEmitter"
 import { FileSystem } from "../utils/fileSystem"
 import { Matcher, Pattern, PatternOptions } from "../utils/matcher"
 import { copyToMap, formatDate, formatHRTime, insertOrdered } from "../utils/misc"
 import { appendFileName, containsPath, getDir, isAbsolutePath, normalizePath, pathEquals, relativePath, resolvePath, setDir } from "../utils/path"
-import { exec, ExecResult } from "../utils/process"
+import { exec } from "../utils/process"
 import { createSourceMappingURLComment, SourceMapObject } from "../utils/sourceMap"
 import { isAbsoluteURL } from "../utils/url"
-import { DevServerOptions, DevServer } from "./devServer"
+import { DevServer, DevServerMode, DevServerOptions } from "./devServer"
 import { i18n } from "./i18n"
 import { Logger, LoggerOptions, LogLevel } from "./logger"
 import { Module, ModuleLogEntry, ModuleState } from "./module"
 import { ResolveContext, Resolver, ResolverOptions } from "./resolver"
-import { WatcherOptions, Watcher } from "./watcher"
+import { Watcher, WatcherOptions } from "./watcher"
 
 /** 表示一个模块构建器 */
 export class Builder extends EventEmitter {
@@ -163,10 +164,7 @@ export class Builder extends EventEmitter {
 		this.reporter = options.reporter === undefined || options.reporter === "summary" ? this.summaryReporter : options.reporter ? typeof options.reporter === "function" ? options.reporter : this.detailReporter : undefined
 
 		if (options.watch || options.devServer) {
-			this.watcher = new Watcher(this, {
-				lazyBuild: !!options.devServer,
-				...(typeof options.watch === "object" ? options.watch : undefined)
-			})
+			this.watcher = new Watcher(this, typeof options.watch === "object" ? options.watch : undefined)
 		}
 		if (options.devServer) {
 			this.devServer = new DevServer(this, options.devServer === true ? undefined : typeof options.devServer === "object" ? options.devServer : { url: options.devServer })
@@ -385,7 +383,6 @@ export class Builder extends EventEmitter {
 			},
 			watch(value, name) {
 				assertBooleanOrObject(value, name, {
-					lazyBuild: assertBoolean,
 					usePolling: assertBoolean,
 					interval: assertNumber,
 					delay: assertNumber,
@@ -720,7 +717,7 @@ export class Builder extends EventEmitter {
 
 	/** 获取构建器的版本号 */
 	get version() {
-		return require("../../package").version as string
+		return require("../../package.json").version as string
 	}
 
 	// #endregion
@@ -741,7 +738,7 @@ export class Builder extends EventEmitter {
 			this.watcher.start()
 			// 监听模式忽略错误
 			try {
-				await this.build(this.watcher.lazyBuild)
+				await this.build(this.devServer && this.devServer.mode !== DevServerMode.normal)
 			} catch (e) {
 				this.logger.error(e)
 			}
@@ -765,6 +762,9 @@ export class Builder extends EventEmitter {
 
 	/** 正在构建的确认对象 */
 	private _buildPromise?: Promise<BuildResult>
+
+	/** 生成操作的确认对象 */
+	private _buildQueue = new AsyncQueue()
 
 	/**
 	 * 构建整个项目
@@ -790,7 +790,7 @@ export class Builder extends EventEmitter {
 	 */
 	private async _buildWoker(pathOnly?: boolean) {
 		const result = new BuildResult()
-		const buildTask = this.logger.begin(i18n`Start building...`)
+		const buildTask = this.logger.begin(i18n`Building`)
 		try {
 			// 第一步：准备开始
 			this.on("buildError", recordError)
@@ -809,7 +809,7 @@ export class Builder extends EventEmitter {
 			}
 
 			// 第三步：搜索入口模块
-			const walkTask = this.logger.begin(i18n`Searching modules...`)
+			const walkTask = this.logger.begin(i18n`Searching modules`)
 			const entryModules = result.entryModules
 			try {
 				let baseDir = this.rootDir
@@ -846,7 +846,7 @@ export class Builder extends EventEmitter {
 			}
 
 			// 第四步：编译、解析入口模块及其依赖
-			const compileTask = this.logger.begin(i18n`Compiling modules...`)
+			const compileTask = this.logger.begin(i18n`Compiling modules`)
 			try {
 				for (const module of entryModules) {
 					this._loadModule(module).then(() => {
@@ -863,7 +863,7 @@ export class Builder extends EventEmitter {
 
 			// 第五步：提取公共模块
 			if (!pathOnly) {
-				const bundleTask = this.logger.begin(i18n`Bundling modules...`)
+				const bundleTask = this.logger.begin(i18n`Bundling modules`)
 				try {
 					for (const bundler of this.bundlers.values()) {
 						if (bundler && bundler.bundle) {
@@ -878,7 +878,7 @@ export class Builder extends EventEmitter {
 			}
 
 			// 第六步：生成、优化、保存模块
-			const emitTask = this.logger.begin(i18n`Emitting modules...`)
+			const emitTask = this.logger.begin(i18n`Emitting modules`)
 			try {
 				const promises: Promise<void>[] = []
 				for (const module of entryModules) {
@@ -922,65 +922,51 @@ export class Builder extends EventEmitter {
 
 	// #region 增量构建
 
-	/** 生成操作的确认对象，确保同时仅一个模块在生成 */
-	private _emitPromise?: Promise<void>
-
-	/** 当一个模块正在生成时缓存其它待生成的模块列表 */
-	private readonly _pendingModules: Module[] = []
-
-	/** 当前正在使用的监听器 */
-	readonly watcher?: Watcher
-
 	/**
 	 * 获取最终生成的模块
 	 * @param outPath 模块的最终保存绝对路径
 	 * @returns 返回一个模块，模块的状态表示其是否已生成成功，如果模块不存在则返回 `undefined`
 	 */
 	async getEmittedModule(outPath: string) {
-		// 等待全部构建
-		if (this._buildWoker) {
-			try {
-				await this._buildWoker
-			} catch { }
+		// 确保所有生成操作都已结束
+		if (this._loadPromise) {
+			await this._loadPromise
 		}
-		// 模块不存在或已生成
+		await this._emitQueue
+		this._emitQueue.next()
+		// 读取模块
 		const module = this.emittedModules.get(outPath)
-		if (!module || module.state === ModuleState.emitted) {
-			return module
+		if (module && module.state !== ModuleState.emitted) {
+			await this._buildModule(module)
 		}
+		return module
+	}
+
+	/** 生成操作的确认对象，确保同时仅一个模块在生成 */
+	private _emitQueue = new AsyncQueue()
+
+	/**
+	 * 构建指定的模块
+	 * @param module 要构建的模块
+	 */
+	private async _buildModule(module: Module) {
 		// 载入模块
 		if (module.state === ModuleState.initial) {
 			this._loadModule(module)
 		}
-		// 确认所有模块都已加载
+		// 等待所有模块都已加载
 		if (this._loadPromise) {
 			await this._loadPromise
 		}
-		// 假设一个 HTML 引用了 2 个图片，刚加载完第 1 个时，2 个图片都被更新
-		// 此时如果重新生成 2 个图片，可能导致这个 HTML 引了不同版本的图片
-		// 为避免这个情况，一旦进入生成阶段，所有文件都将禁止更新
-		// 将模块添加到生成队列
-		if (module.state === ModuleState.loaded) {
-			this._pendingModules.push(module)
-		}
 		// 确认所有模块都已生成
-		if (this._emitPromise) {
-			await this._emitPromise
-		} else {
-			let emitCallback!: () => void
-			this._emitPromise = new Promise(resolve => {
-				emitCallback = resolve
-			})
-			try {
-				while (this._pendingModules.length > 0) {
-					await this._emitModule(this._pendingModules.shift()!)
-				}
-			} finally {
-				this._emitPromise = undefined
-				emitCallback()
+		await this._emitQueue
+		try {
+			if (module.state === ModuleState.loaded) {
+				await this._emitModule(module)
 			}
+		} finally {
+			this._emitQueue.next()
 		}
-		return module
 	}
 
 	/**
@@ -989,15 +975,16 @@ export class Builder extends EventEmitter {
 	 * @returns 返回受影响的模块数
 	 */
 	commitChange(path: string) {
-		const module = this.modules.get(path)
-		if (module) {
-			if (module.state === ModuleState.changed) {
-				return 0
-			}
-			return this._updateModule(module, ModuleState.changed, true)
-		} else {
-			return this._updateReference(path)
-		}
+		return this._commitChange(path, ModuleState.changed)
+	}
+
+	/**
+	 * 记录某个模块被创建
+	 * @param path 被更改的模块绝对路径
+	 * @returns 返回受影响的模块数
+	 */
+	commitCreate(path: string) {
+		return this._commitChange(path, ModuleState.initial)
 	}
 
 	/**
@@ -1006,15 +993,63 @@ export class Builder extends EventEmitter {
 	 * @returns 返回受影响的模块数
 	 */
 	commitDelete(path: string) {
-		const module = this.modules.get(path)
-		if (module) {
-			if (module.state === ModuleState.deleted) {
+		return this._commitChange(path, ModuleState.deleted)
+	}
+
+	/**
+	 * 记录一个模块已修改
+	 * @param path 被修改的模块绝对路径
+	 * @param state 修改的类型
+	 * @returns 返回受影响的模块数
+	 */
+	private async _commitChange(path: string, state: ModuleState) {
+		// 假设一个 HTML 引用了 2 个图片，刚加载完第 1 个时，2 个图片都被更新
+		// 此时如果重新生成 2 个图片，可能导致这个 HTML 引了不同版本的图片
+		// 为避免这个情况，一旦进入生成阶段，所有文件都将禁止更新
+		const updatedModules = new Set<Module>()
+		await this._emitQueue
+		const module = this.getModule(path)
+		try {
+			if (state && module.state === state) {
 				return 0
 			}
-			return this._updateModule(module, ModuleState.deleted, true)
-		} else {
-			return this._updateReference(path)
+			this._updateModule(module, state, true, updatedModules)
+		} finally {
+			this._emitQueue.next()
 		}
+
+
+
+
+		// 更新模块
+
+
+		// 如果模块已删除，无需重新编译
+		if (state === ModuleState.deleted) {
+			return
+		}
+
+		// 初始化新模块
+		if (!this.devServer || this.devServer.mode === DevServerMode.idle) {
+			// 空闲模式，利用空闲时间构建模块
+			// todo
+			for (const updatedModule of updatedModules) {
+				await this._buildModule(updatedModule)
+			}
+		} else if (this.devServer.mode === DevServerMode.fast) {
+			// 快速模式：仅新入口模块重新构建
+			if (state === ModuleState.initial && module.isEntryModule) {
+				module.data = ""
+				await this._buildModule(module)
+				module.reset()
+			}
+		} else {
+			// 普通模式：直接重新构建
+			for (const updatedModule of updatedModules) {
+				await this._buildModule(updatedModule)
+			}
+		}
+		return updatedModules.size
 	}
 
 	/**
@@ -1022,19 +1057,16 @@ export class Builder extends EventEmitter {
 	 * @param module 被更改的模块
 	 * @param state 新的模块状态
 	 * @param fileChanged 如果是用户直接改动则为 `true`，如果是因为引用关系间接改动则为 `false`
+	 * @param updatedModules 此次更新的模块
 	 * @returns 返回受影响的模块数
 	 */
-	private async _updateModule(module: Module, state: ModuleState, fileChanged: boolean) {
-		// 正在生成阶段，等待生成结束
-		if (this._emitPromise) {
-			await this._emitPromise
-		}
+	private _updateModule(module: Module, state: ModuleState, fileChanged: boolean, updatedModules: Set<Module>) {
 		if (this._loadPromise) {
 			// 正在加载模块阶段，重新加载对应的模块
 			const oldState = module.state
 			module.state = state
 			// 如果模块正在加载，为避免影响处理器插件，延迟到插件执行完成后处理（在 _loadModule 负责处理）
-			if (oldState !== ModuleState.loading) {
+			if (!(oldState & ModuleState.processing)) {
 				module.reset()
 				if (state === ModuleState.changed) {
 					this._loadModule(module)
@@ -1046,27 +1078,25 @@ export class Builder extends EventEmitter {
 			module.reset()
 		}
 		this.emit("updateModule", module, fileChanged)
-		return (await this._updateReference(module.originalPath)) + 1
-	}
+		if (state === ModuleState.changed || state === ModuleState.initial && module.isEntryModule) {
+			updatedModules.add(module)
+		}
 
-	/**
-	 * 更新引用指定模块的所有模块
-	 * @param path 被更改的路径
-	 * @returns 返回受影响的模块数
-	 */
-	private async _updateReference(path: string) {
-		let count = 0
-		const references = this.references.get(path)
+		// 更新引用
+		const references = this.references.get(module.originalPath)
 		if (references) {
 			for (const reference of references) {
 				if (reference.state & ModuleState.updated) {
 					continue
 				}
-				count += await this._updateModule(reference, ModuleState.changed, false)
+				updatedModules.add(reference)
+				this._updateModule(reference, ModuleState.changed, false, updatedModules)
 			}
 		}
-		return count
 	}
+
+	/** 当前正在使用的监听器 */
+	readonly watcher?: Watcher
 
 	/** 获取每个模块更新后受影响的模块列表，键为更新的模块绝对路径，值为所有受影响的模块对象 */
 	readonly references = new Map<string, Set<Module>>()
@@ -1422,6 +1452,7 @@ export class Builder extends EventEmitter {
 					module.type = this.getMimeType(module.ext)
 				}
 				module.state = ModuleState.loaded
+				// 监听外部模块
 				if (this.watcher && !module.isEntryModule) {
 					this.watcher.add(module.originalPath)
 				}
@@ -1657,14 +1688,13 @@ export class Builder extends EventEmitter {
 		// 生成兄弟模块
 		if (module.siblings) {
 			for (const sibling of module.siblings) {
-				await this._emitModule(sibling)
+				if (sibling.state === ModuleState.loaded) {
+					await this._emitModule(sibling)
+				}
 			}
 		}
 		try {
 			// 避免重复生成
-			if (module.state !== ModuleState.loaded) {
-				return
-			}
 			module.state = ModuleState.emitting
 			// 生成模块
 			const bundler = module.bundler
@@ -1800,12 +1830,12 @@ export class Builder extends EventEmitter {
 			}
 			module.emitTime = Date.now()
 			module.state = ModuleState.emitted
-			this.emit("emitModule", module)
 			if (module.references) {
 				for (const reference of module.references) {
 					this.addReference(module, reference)
 				}
 			}
+			this.emit("emitModule", module)
 		} catch (e) {
 			module.addError(e)
 		}
@@ -1945,8 +1975,11 @@ export class Builder extends EventEmitter {
 	/** 获取用于安装模块的命令，其中 `<module>` 会被替换为实际的模块名 */
 	readonly installCommand: string
 
+	/** 确保同时只执行一个安装命令 */
+	private readonly _installQueue = new AsyncQueue()
+
 	/** 正在安装的模块列表 */
-	private readonly _installingModules = new Map<string, Promise<ExecResult>>()
+	private readonly _installingModules = new Map<string, boolean>()
 
 	/**
 	 * 安装一个模块
@@ -1954,7 +1987,7 @@ export class Builder extends EventEmitter {
 	 * @returns 如果安装成功则返回 `true`，否则说明模块路径错误或安装命令退出状态码非 0，返回 `false`
 	 */
 	async installModule(module: string) {
-		// 检测模块名
+		// 禁止安装相对路径或绝对路径
 		if (/^[./~]/.test(module) || isAbsolutePath(module)) {
 			return false
 		}
@@ -1966,35 +1999,45 @@ export class Builder extends EventEmitter {
 			// @foo/goo 更像是 NPM 上的包
 			module = module.split("/", 2).join("/")
 		}
-		// 如果模块正在安装，则等待
+		// 同时只能开启一个安装进程
+		await this._installQueue
+		// 同名模块不重复安装
 		const exists = this._installingModules.get(module)
-		if (exists) {
-			return (await exists).exitCode === 0
+		if (exists !== undefined) {
+			return exists
 		}
+		// 安装模块
 		const command = this.installCommand.replace("<module>", module)
-		const installTask = this.logger.begin(i18n`Installing module '${module}'...`)
-		if (this.logger.logLevel === LogLevel.verbose) {
-			this.logger.verbose(`${this.baseDir}>${command}`)
-		}
-		const promise = exec(command, {
-			cwd: this.baseDir,
-			env: {
-				...process.env,
-				// 避免出现权限问题
-				NODE_ENV: null!
+		const installTask = this.logger.begin(i18n`Installing module '${module}' via '${command.replace(/\s.*$/s, "")}'...`)
+		try {
+			if (this.logger.logLevel === LogLevel.verbose) {
+				this.logger.verbose(`${this.baseDir}>${command}`)
 			}
-		})
-		this._installingModules.set(module, promise)
-		const result = await promise
-		if (result.stderr) {
-			this.logger.log(result.stderr)
+			const result = await exec(command, {
+				cwd: this.baseDir,
+				env: {
+					...process.env,
+					// 避免出现权限问题
+					NODE_ENV: null!
+				}
+			})
+			if (result.stderr) {
+				this.logger.log(result.stderr)
+			}
+			if (result.stdout) {
+				this.logger.log(result.stdout)
+			}
+			const success = result.exitCode === 0
+			this._installingModules.set(module, success)
+			return success
+		} finally {
+			this.logger.end(installTask)
+			this._installQueue.next()
+			// 同一批模块安装后，下次重复安装模块
+			if (!this._installQueue.length) {
+				this._installingModules.clear()
+			}
 		}
-		if (result.stdout) {
-			this.logger.log(result.stdout)
-		}
-		this._installingModules.delete(module)
-		this.logger.end(installTask)
-		return result.exitCode === 0
 	}
 
 	/**

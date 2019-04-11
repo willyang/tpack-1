@@ -141,8 +141,9 @@ export function formatCommandLineOptions(commandLineOptions: { [option: string]:
 		}
 		keys.set(title, commandOption)
 	}
+	// 加上左右各两个空格
+	maxColumns += 4
 	// 生成最终结果
-	maxColumns += 2
 	let result = ""
 	for (const [title, commandOption] of keys.entries()) {
 		if (result) {
@@ -151,7 +152,7 @@ export function formatCommandLineOptions(commandLineOptions: { [option: string]:
 		if (commandOption.group) {
 			result += `\n${service.translate(commandOption.group)}:\n`
 		}
-		result += `  ${title}${" ".repeat(maxColumns - title.length)}${splitString(service.translate(commandOption.description!) + (commandOption.default ? i18n` [default: ${commandOption.default}]` : ""), columns - maxColumns).join(`\n${" ".repeat(maxColumns)}`)}`
+		result += `  ${title.padEnd(maxColumns - 2)}${splitString(service.translate(commandOption.description!) + (commandOption.default ? i18n` [default: ${commandOption.default}]` : ""), 2, columns - maxColumns).join(`\n${" ".repeat(maxColumns)}`)}`
 	}
 	return result
 }

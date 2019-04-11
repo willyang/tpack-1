@@ -272,58 +272,76 @@ export class Logger {
 
 	// #region 进度
 
-	/** 最后一个任务项 */
-	private _taskEnd?: { content: string, prev?: Logger["_taskEnd"], next?: Logger["_taskEnd"] }
+	/** 最后一个任务 */
+	private _lastTask?: {
+		/** 上一条任务 */
+		prev?: Logger["_lastTask"]
+		/** 下一条任务 */
+		next?: Logger["_lastTask"]
+		/** 当前任务关联的日志 */
+		content: string
+	}
 
 	/** 获取或设置是否打印进度指示器 */
 	spinner: boolean
 
 	/**
-	 * 记录将开始执行指定的任务并返回任务编号
+	 * 记录将开始执行指定的任务
 	 * @param log 要记录的日志或错误对象
+	 * @returns 返回任务编号
 	 */
 	begin(log: string | Error | LogEntry) {
+		// 不显示进度条则不记录信息
+		if (!this.spinner) {
+			return null
+		}
+		// 更新进度条
 		const content = this.formatLog(log)
 		if (this.logLevel === LogLevel.verbose) {
 			this.verbose(`${color(i18n`Starting`, ConsoleColor.brightMagenta)} ${content}`)
-		} else if (this.logLevel < LogLevel.silent && this.spinner) {
+		} else {
 			this.showSpinner(content)
 		}
 		// 添加节点
-		const node: Logger["_taskEnd"] = { content }
-		if (this._taskEnd) {
-			this._taskEnd.next = node
-			node.prev = this._taskEnd
-			this._taskEnd = node
+		const taskId: Logger["_lastTask"] = { content }
+		if (this._lastTask) {
+			this._lastTask.next = taskId
+			taskId.prev = this._lastTask
+			this._lastTask = taskId
 		} else {
-			this._taskEnd = node
+			this._lastTask = taskId
 		}
-		return node
+		return taskId
 	}
 
 	/**
 	 * 记录指定的任务已结束
-	 * @param task 要结束的任务编号
+	 * @param taskId 要结束的任务编号
 	 */
 	end(taskId: ReturnType<Logger["begin"]>) {
+		if (!taskId) {
+			return
+		}
+		// 删除当前节点
 		const { prev, next } = taskId
 		if (prev) {
 			prev.next = next
 		}
+		const isLastTask = this._lastTask === taskId
 		if (next) {
 			next.prev = prev
-		} else if (this._taskEnd === taskId) {
-			this._taskEnd = prev
+		} else if (isLastTask) {
+			this._lastTask = prev
 		}
+		// 如果当前任务是最后一个则更新进度
 		if (this.logLevel === LogLevel.verbose) {
 			this.verbose(`${color(formatDate(new Date(), "[HH:mm:ss]"), ConsoleColor.brightBlack)} ${color(i18n`Finished`, ConsoleColor.brightMagenta)} ${taskId.content}`)
-		}
-		if (this._taskEnd) {
-			if (this._spinnerTimer) {
-				this.showSpinner(this._taskEnd.content)
+		} else if (isLastTask) {
+			if (this._lastTask) {
+				this.showSpinner(this._lastTask.content)
+			} else {
+				this.hideSpinner()
 			}
-		} else {
-			this.hideSpinner()
 		}
 	}
 
@@ -331,17 +349,35 @@ export class Logger {
 	 * 重置所有任务
 	 */
 	reset() {
-		if (this._taskEnd) {
-			this._taskEnd = undefined
+		this._lastTask = undefined
+		this.hideSpinner()
+	}
+
+	/** 当前进度的百分比 */
+	private _progressPercent?: number
+
+	/**
+	 * 设置当前显示的百分比进度
+	 * @param progress 要设置的进度值（0 到 100 之间）
+	 */
+	progress(progress: number) {
+		if (!this.spinner) {
+			return
+		}
+		this._progressPercent = progress
+		this._resolvedSpinnerText = undefined
+		if (this._spinnerTimer) {
+			return
+		}
+		if (progress < 100) {
+			this.showSpinner("")
+		} else {
 			this.hideSpinner()
 		}
 	}
 
 	/** 当前进度指示器的文案 */
 	private _spinnerText?: string
-
-	/** 当前进度的百分比 */
-	private _progressPercent?: number
 
 	/** 缓存已计算的进度条文案 */
 	private _resolvedSpinnerText?: string
@@ -363,13 +399,22 @@ export class Logger {
 	 * @param spinnerText 要显示的文案
 	 */
 	showSpinner(spinnerText: string) {
+		// 如果日志等级为无日志则禁止一切输出
+		if (this.logLevel === LogLevel.silent) {
+			return
+		}
 		this._spinnerText = spinnerText
 		this._resolvedSpinnerText = undefined
+		this.resumeSpinner()
+	}
+
+	/** 恢复进度指示器 */
+	resumeSpinner() {
 		if (this._spinnerTimer) {
 			return
 		}
 		hideCursor()
-		// 劫持 write 等函数，如果发现有新内容输出则先暂时关闭进度条
+		// 劫持 process.stdout.write，如果发现有新内容输出则先删除进度条，避免只显示部分进度条
 		const oldStdoutWrite: Function = this._oldStdoutWrite = process.stdout.write
 		process.stdout.write = function () {
 			oldStdoutWrite.call(this, "\u001b[0J")
@@ -394,13 +439,15 @@ export class Logger {
 
 	/** 更新进度指示器 */
 	private _updateSpinner = () => {
+		// 更新加载中图标
 		let index = ++this._spinnerFrameIndex
 		if (index === this.spinnerFrames.length) {
 			this._spinnerFrameIndex = index = 0
 		}
-		if (this._resolvedSpinnerText == undefined) {
+		// 重新计算要显示的进度文案
+		if (this._resolvedSpinnerText === undefined) {
 			let content = ""
-			if (this._progressPercent != undefined) {
+			if (this._progressPercent !== undefined) {
 				if (this._progressPercent < 10) {
 					content = " "
 				}
@@ -415,30 +462,26 @@ export class Logger {
 	}
 
 	/**
-	 * 设置当前显示的百分比进度
-	 * @param progress 要设置的进度值（0 到 100 之间）
-	 */
-	progress(progress: number) {
-		this._progressPercent = progress
-		this._resolvedSpinnerText = undefined
-		if (this._spinnerTimer) {
-			return
-		}
-		this.showSpinner("")
-	}
-
-	/**
 	 * 隐藏进度指示器
 	 */
 	hideSpinner() {
+		this.pauseSpinner()
+		this._resolvedSpinnerText = this._progressPercent = this._spinnerText = this._spinnerTimer = this._oldStderrWrite = this._oldStdoutWrite = undefined
+	}
+
+	/**
+	 * 暂时隐藏进度指示器
+	 */
+	pauseSpinner() {
+		// 如果进度条未显示则忽略
 		if (!this._spinnerTimer) {
 			return
 		}
 		clearInterval(this._spinnerTimer)
-		this._oldStdoutWrite!.call(process.stdout, "\u001b[0J")
+		// 还原劫持的 process.stdout.write
 		process.stdout.write = this._oldStdoutWrite!
 		process.stderr.write = this._oldStderrWrite!
-		this._resolvedSpinnerText = this._progressPercent = this._spinnerText = this._spinnerTimer = this._oldStderrWrite = this._oldStdoutWrite = undefined
+		process.stdout.write("\u001b[0J")
 		showCursor()
 	}
 

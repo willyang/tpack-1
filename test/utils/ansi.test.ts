@@ -18,20 +18,21 @@ export namespace ansiTest {
 
 	export function splitLogTest() {
 		assert.deepStrictEqual(ansi.splitString("ABCDEFG"), ["ABCDEFG"])
-		assert.deepStrictEqual(ansi.splitString("ABCDEFG", 1), ["A", "B", "C", "D", "E", "F", "G"])
-		assert.deepStrictEqual(ansi.splitString("你好世界", 1), ["你", "好", "世", "界"])
-		assert.deepStrictEqual(ansi.splitString("ABCDEFG", 5), ["ABCD", "EFG"])
-		assert.deepStrictEqual(ansi.splitString("你好世界", 5), ["你好", "世界"])
-		assert.deepStrictEqual(ansi.splitString("你好A世界", 5), ["你好", "A世", "界"])
-		assert.deepStrictEqual(ansi.splitString("你好世界", 12), ["你好世界"])
-		assert.deepStrictEqual(ansi.splitString("你好世界A", 12), ["你好世界A"])
+		assert.deepStrictEqual(ansi.splitString("ABCDEFG", 0, 1), ["A", "B", "C", "D", "E", "F", "G"])
+		assert.deepStrictEqual(ansi.splitString("你好世界", 0, 1), ["你", "好", "世", "界"])
+		assert.deepStrictEqual(ansi.splitString("ABCDEFG", 0, 5), ["ABCD", "EFG"])
+		assert.deepStrictEqual(ansi.splitString("ABCDEFG", 2, 5), ["ABCD", "  EF", "  G"])
+		assert.deepStrictEqual(ansi.splitString("你好世界", 0, 5), ["你好", "世界"])
+		assert.deepStrictEqual(ansi.splitString("你好A世界", 0, 5), ["你好", "A世", "界"])
+		assert.deepStrictEqual(ansi.splitString("你好世界", 0, 12), ["你好世界"])
+		assert.deepStrictEqual(ansi.splitString("你好世界A", 0, 12), ["你好世界A"])
 
-		assert.deepStrictEqual(ansi.splitString("hello world", 5), ["hell", "o", "worl", "d"])
-		assert.deepStrictEqual(ansi.splitString("hello world", 6), ["hello", "world"])
-		assert.deepStrictEqual(ansi.splitString("hello world", 7), ["hello", "world"])
-		assert.deepStrictEqual(ansi.splitString("hello world", 8), ["hello", "world"])
+		assert.deepStrictEqual(ansi.splitString("hello world", 0, 5), ["hell", "o", "worl", "d"])
+		assert.deepStrictEqual(ansi.splitString("hello world", 0, 6), ["hello", "world"])
+		assert.deepStrictEqual(ansi.splitString("hello world", 0, 7), ["hello", "world"])
+		assert.deepStrictEqual(ansi.splitString("hello world", 0, 8), ["hello", "world"])
 
-		assert.deepStrictEqual(ansi.splitString("\u001b[37mABCDEFG\u001b[39m", 5), ["\u001b[37mABCD", "EFG\u001b[39m"])
+		assert.deepStrictEqual(ansi.splitString("\u001b[37mABCDEFG\u001b[39m", 0, 5), ["\u001b[37mABCD", "EFG\u001b[39m"])
 	}
 
 	export function ellipsisLogTest() {
