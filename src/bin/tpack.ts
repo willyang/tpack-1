@@ -25,7 +25,7 @@ async function main() {
 	// 禁用未捕获的异步异常警告
 	process.on("unhandledRejection", error => {
 		if (error) {
-			console.error(error)
+			console.error(error instanceof Error ? error.stack : error)
 		}
 		process.exit(-10)
 	})
@@ -419,7 +419,14 @@ async function main() {
 
 	// 解析配置文件
 	const configFile = searchFile(args["--config"] ? [args["--config"] as string] : [".js", ...Object.keys(extensions)].map(ext => `tpack.config${ext}`))
-	const tasks = loadConfigFile(configFile || require.resolve("../../configs/tpack.config.default.js"), !args["--no-es-module"])
+	let tasks: ReturnType<typeof loadConfigFile>
+	try {
+		tasks = loadConfigFile(configFile || require.resolve("../../configs/tpack.config.default.js"), !args["--no-es-module"])
+	} catch (e) {
+		console.error(`Error loading '${configFile}': ${e.stack}`)
+		process.exitCode = -8
+		return
+	}
 	if (args["--completion"]) {
 		return notImplemented("--completion")
 	}

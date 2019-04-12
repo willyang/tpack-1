@@ -1986,7 +1986,7 @@ export class Builder extends EventEmitter {
 	 * @param module 要安装的模块
 	 * @returns 如果安装成功则返回 `true`，否则说明模块路径错误或安装命令退出状态码非 0，返回 `false`
 	 */
-	async installModule(module: string) {
+	installModule(module: string) {
 		// 禁止安装相对路径或绝对路径
 		if (/^[./~]/.test(module) || isAbsolutePath(module)) {
 			return false
@@ -2000,44 +2000,40 @@ export class Builder extends EventEmitter {
 			module = module.split("/", 2).join("/")
 		}
 		// 同时只能开启一个安装进程
-		await this._installQueue
-		// 同名模块不重复安装
-		const exists = this._installingModules.get(module)
-		if (exists !== undefined) {
-			return exists
-		}
-		// 安装模块
-		const command = this.installCommand.replace("<module>", module)
-		const installTask = this.logger.begin(i18n`Installing module '${module}' via '${command.replace(/\s.*$/s, "")}'...`)
-		try {
-			if (this.logger.logLevel === LogLevel.verbose) {
-				this.logger.verbose(`${this.baseDir}>${command}`)
+		return this._installQueue.runPromise(async () => {
+			// 同名模块不重复安装
+			const exists = this._installingModules.get(module)
+			if (exists !== undefined) {
+				return exists
 			}
-			const result = await exec(command, {
-				cwd: this.baseDir,
-				env: {
-					...process.env,
-					// 避免出现权限问题
-					NODE_ENV: null!
+			// 安装模块
+			const command = this.installCommand.replace("<module>", module)
+			const installTask = this.logger.begin(i18n`Installing module '${module}' via '${command.replace(/\s.*$/s, "")}'`)
+			try {
+				if (this.logger.logLevel === LogLevel.verbose) {
+					this.logger.verbose(`${this.baseDir}>${command}`)
 				}
-			})
-			if (result.stderr) {
-				this.logger.log(result.stderr)
+				const result = await exec(command, {
+					cwd: this.baseDir,
+					env: {
+						...process.env,
+						// 避免出现权限问题
+						NODE_ENV: null!
+					}
+				})
+				if (result.stderr) {
+					this.logger.log(result.stderr)
+				}
+				if (result.stdout) {
+					this.logger.log(result.stdout)
+				}
+				const success = result.exitCode === 0
+				this._installingModules.set(module, success)
+				return success
+			} finally {
+				this.logger.end(installTask)
 			}
-			if (result.stdout) {
-				this.logger.log(result.stdout)
-			}
-			const success = result.exitCode === 0
-			this._installingModules.set(module, success)
-			return success
-		} finally {
-			this.logger.end(installTask)
-			this._installQueue.next()
-			// 同一批模块安装后，下次重复安装模块
-			if (!this._installQueue.length) {
-				this._installingModules.clear()
-			}
-		}
+		})
 	}
 
 	/**

@@ -5,7 +5,6 @@ _*
 dist
 
 ## Node.js
-package-lock.json
 node_modules
 jspm_packages
 bower_components

@@ -1,5 +1,5 @@
 import { SourceMapData, toSourceMapBuilder, toSourceMapObject, toSourceMapString } from "../utils/sourceMap"
-import { getExt, setExt, getDir, setDir, appendFileName, prependFileName, getFileName, setFileName } from "../utils/path"
+import { getExt, setExt, getDir, setDir, appendFileName, prependFileName, getFileName, setFileName, resolvePath } from "../utils/path"
 import { indexToLineColumn } from "../utils/lineColumn"
 import { LogEntry } from "./logger"
 import { Bundler } from "./builder"
@@ -88,6 +88,14 @@ export class Module {
 	 */
 	appendName(value: string) {
 		this.path = appendFileName(this.path, value)
+	}
+
+	/** 
+	 * 解析当前文件的相对路径为绝对路径
+	 * @param path 要解析的相对路径
+	 */
+	resolve(path: string) {
+		return resolvePath(this.originalPath, "..", path)
 	}
 
 	// #endregion

@@ -1,6 +1,28 @@
 [
 	{
 		"match": "*.less",
-		"use": "tpack/compilers/less"
+		"use": "../../compilers/less"
+	},
+	{
+		"match": "*.{sass,scss}",
+		"use": "../../compilers/sass"
+	},
+	{
+		"match": "*.styl",
+		"use": "../../compilers/stylus"
+	},
+	{
+		"match": [
+			"*.{js,jsx}",
+			"!**/node_modules/**"
+		],
+		"use": "../../compilers/typescript"
+	},
+	{
+		"match": [
+			"*.{ts,tsx}",
+			"!*.d.ts"
+		],
+		"use": "../../compilers/typescript"
 	}
 ]

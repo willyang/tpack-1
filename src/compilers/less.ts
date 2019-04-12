@@ -1,39 +1,25 @@
 import { Processor, Builder } from "../core/builder"
 import { Module } from "../core/module"
+import { Compiler } from "./common"
 
-export default class Less implements Processor {
-
-	private _less?: typeof less
-
-	constructor(readonly options: Less.Options) { }
-
-	async process(module: Module, builder: Builder) {
-
-		// 更新文件名
-		module.ext = ".css"
-		if (!module.content) {
-			return
-		}
-
-		// 载入 less 插件
-		let less = this._less!
-		if (!less) {
-			less = await builder.require("less")
-			// @ts-ignore
-			less.logger.addListener({
-				debug: (msg: string) => { builder.logger.verbose(msg) },
-				info: (msg: string) => { builder.logger.verbose(msg) },
-				warn: (msg: string) => { builder.logger.warning(msg) },
-				error: (msg: string) => { builder.logger.error(msg) }
-			})
-		}
-
-		// 编译
+/** 表示一个 LessCSS 插件 */
+export default class Less extends Compiler implements Processor {
+	get outExt() { return ".css" }
+	get vendorName() { return "less" }
+	init(less: any, options: any, builder: Builder) {
+		less.logger.addListener({
+			debug: (msg: string) => { builder.logger.verbose(msg) },
+			info: (msg: string) => { builder.logger.verbose(msg) },
+			warn: (msg: string) => { builder.logger.warning(msg) },
+			error: (msg: string) => { builder.logger.error(msg) }
+		})
+	}
+	async compile(module: Module, options: any, less: any, builder: Builder) {
 		try {
 			const result = await less.render(module.content, {
 				filename: module.originalPath,
 				sourceMap: builder.sourceMap ? {} : undefined,
-				...this.options
+				...options
 			})
 			module.content = result.css
 			if (result.map) {
@@ -56,5 +42,4 @@ export default class Less implements Processor {
 			})
 		}
 	}
-
 }
