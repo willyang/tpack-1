@@ -23,7 +23,7 @@ export class Deferred {
 	resolve() {
 		if (--this.rejectCount === 0) {
 			const resolve = this._promiseResolve!
-			this._promiseResolve = undefined
+			this._promiseResolve = this.promise = undefined
 			resolve()
 		}
 	}

@@ -1,6 +1,5 @@
 import { Stats } from "fs"
 import { color, ConsoleColor } from "../utils/ansi"
-import { formatDate } from "../utils/misc"
 import { containsPath, getDir } from "../utils/path"
 import { Watcher as FSWatcher } from "../utils/watcher"
 import { Builder } from "./builder"
@@ -61,13 +60,13 @@ export class Watcher extends FSWatcher {
 	protected onChange(path: string, stats: Stats, lastWriteTime: number) {
 		this.builder.logger.info(`${color(i18n`Changed`, ConsoleColor.brightCyan)} ${this.builder.logger.formatPath(path)}`)
 		super.onChange(path, stats, lastWriteTime)
-		this.builder.commitCreate(path)
+		this.builder.commitChange(path)
 	}
 
 	protected onCreate(path: string, stats: Stats) {
 		this.builder.logger.info(`${color(i18n`Created`, ConsoleColor.brightMagenta)} ${this.builder.logger.formatPath(path)}`)
 		super.onCreate(path, stats)
-		this.builder.commitChange(path)
+		this.builder.commitCreate(path)
 	}
 
 	protected onDelete(path: string, lastWriteTime: number) {

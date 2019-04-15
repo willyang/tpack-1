@@ -116,11 +116,11 @@ export class Module {
 	data?: string | Buffer
 
 	/** 获取或设置模块的最终文本内容 */
-	get content() { return this.data instanceof Buffer ? this.data.toString() : this.data! }
+	get content() { return this.data instanceof Buffer ? this.data = this.data.toString() : this.data! }
 	set content(value) { this.data = value }
 
 	/** 获取或设置模块的最终二进制内容 */
-	get buffer() { return typeof this.data === "string" ? Buffer.from(this.data) : this.data! }
+	get buffer() { return typeof this.data === "string" ? this.data = Buffer.from(this.data) : this.data! }
 	set buffer(value) { this.data = value }
 
 	/** 计算模块的字节大小 */

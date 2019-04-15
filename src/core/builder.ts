@@ -204,7 +204,7 @@ export class Builder extends EventEmitter {
 				if (!rule) {
 					continue
 				}
-				const id = `${name}-${i}`
+				const id = `${name}[${i}]`
 				const resolved: ResolvedProcessorRule = {
 					name: id,
 					matcher: rule.match != undefined || rule.exclude != undefined ? this.createMatcher(rule.match || (() => true), rule.exclude) : undefined,
@@ -1031,36 +1031,77 @@ export class Builder extends EventEmitter {
 	 * @returns 返回受影响的文件数
 	 */
 	private _commitUpdate(path: string, state: ModuleState) {
+		debugger
 		// 为避免影响当前的生成流程，需要等待生成结束后再应用更新
 		// 但如果正在加载阶段，可以直接更新然后让加载器重新加载，以避免浪费时间做生成操作
 		const module = this.getModule(path)
 		if (this._loadDeferred.promise) {
 			const count = this._updateModule(module, state, false, module)
 			// 空闲模式，将更新的模块放入构建列表
-			if (count > 0 && this.devServer && this.devServer.mode === DevServerMode.idle) {
-				this._buildModules(this._updatingModules)
+			if (!this.devServer || this.devServer.mode === DevServerMode.normal) {
+				// 普通模式：全部立即重新构建，为了降低构建次数，多次更新合并一起构建
+				if (state !== ModuleState.changing || count > 0) {
+					this._rebuildAll()
+				}
+			} else if (this.devServer.mode === DevServerMode.idle) {
+				// 空闲模式：全部延时重新构建
+				// 强制重新创建新模块
+				if (state === ModuleState.creating || count > 0) {
+					this._buildQueue.then(async () => {
+						if (state === ModuleState.creating) {
+							this._updatingModules.add(module)
+						}
+						this._buildModules(this._updatingModules)
+					})
+				}
+			} else if (state === ModuleState.creating) {
+				// 快速模式：新增路径
+				this._addModule(module)
 			}
 			return count
 		}
 		return this._buildQueue.then(() => {
 			const count = this._updateModule(module, state, true, module)
-			if (count > 0) {
-				if (!this.devServer || this.devServer.mode === DevServerMode.normal) {
-					// 普通模式：全部立即重新构建，为了降低构建次数，多次更新合并一起构建
-					if (this._buildTimer) {
-						clearTimeout(this._buildTimer)
-					}
-					this._buildTimer = setTimeout(() => {
-						this._buildTimer = undefined
-						this.build()
-					}, this.buildDelay)
-				} else if (this.devServer.mode === DevServerMode.idle) {
-					// 空闲模式：全部延时重新构建
-					this._buildModules(this._updatingModules)
+			if (!this.devServer || this.devServer.mode === DevServerMode.normal) {
+				// 普通模式：全部立即重新构建，为了降低构建次数，多次更新合并一起构建
+				this._rebuildAll()
+			} else if (this.devServer.mode === DevServerMode.idle) {
+				// 空闲模式：全部延时重新构建
+				// 强制重新创建新模块
+				if (state === ModuleState.creating) {
+					this._updatingModules.add(module)
 				}
-				this._updatingModules.clear()
+				this._buildModules(this._updatingModules)
+			} else if (state === ModuleState.creating) {
+				// 快速模式：新增路径
+				this._addModule(module)
 			}
+			this._updatingModules.clear()
 			return count
+		})
+	}
+
+	/** 重新构建整个项目 */
+	private _rebuildAll() {
+		this._buildQueue.then(async () => {
+			if (this._buildTimer) {
+				clearTimeout(this._buildTimer)
+			}
+			this._buildTimer = setTimeout(() => {
+				this._buildTimer = undefined
+				this.build()
+			}, this.buildDelay)
+		})
+	}
+
+	/** 添加新模块 */
+	private _addModule(module: Module) {
+		this._buildQueue.then(async () => {
+			if (module.state === ModuleState.initial) {
+				module.data = ""
+				await this._buildModule(module)
+				module.reset()
+			}
 		})
 	}
 
@@ -1319,10 +1360,7 @@ export class Builder extends EventEmitter {
 					module.type = bundler.type
 				}
 				if (module.data === undefined && bundler.read !== false) {
-					const readTask = this.logger.begin({
-						source: i18n`Reading`,
-						fileName: module.originalPath
-					})
+					const readTask = this.logger.begin(`${color(i18n`Reading`, ConsoleColor.brightCyan)} ${this.logger.formatPath(module.originalPath)}`)
 					try {
 						if (bundler.read === "text") {
 							module.data = await this.fs.readFile(module.originalPath, this.encoding)
@@ -1343,10 +1381,7 @@ export class Builder extends EventEmitter {
 						return
 					}
 				}
-				const parseTask = this.logger.begin({
-					source: i18n`Parsing`,
-					fileName: module.originalPath
-				})
+				const parseTask = this.logger.begin(`${color(i18n`Parsing`, ConsoleColor.brightCyan)} ${this.logger.formatPath(module.originalPath)}`)
 				try {
 					await bundler.parse(module, this)
 				} catch (e) {
@@ -1594,10 +1629,7 @@ export class Builder extends EventEmitter {
 				if (module.state !== state) {
 					return
 				}
-				const readTask = this.logger.begin({
-					source: i18n`Reading`,
-					fileName: module.originalPath
-				})
+				const readTask = this.logger.begin(`${color(i18n`Reading`, ConsoleColor.brightCyan)} ${this.logger.formatPath(module.originalPath)}`)
 				try {
 					if (processor.processor.read === "text") {
 						module.data = await this.fs.readFile(module.originalPath, this.encoding)
@@ -1619,10 +1651,7 @@ export class Builder extends EventEmitter {
 			if (module.state !== state) {
 				return
 			}
-			const processTask = this.logger.begin({
-				source: processor.name,
-				fileName: module.originalPath
-			})
+			const processTask = this.logger.begin(`${color(processor.name, ConsoleColor.brightCyan)} ${this.logger.formatPath(module.originalPath)}`)
 			try {
 				await processor.processor.process(module, this)
 			} catch (e) {
@@ -1747,10 +1776,7 @@ export class Builder extends EventEmitter {
 			// 生成模块
 			const bundler = module.bundler
 			if (bundler) {
-				const generateTask = this.logger.begin({
-					source: i18n`Generating`,
-					fileName: module.originalPath
-				})
+				const generateTask = this.logger.begin(`${color(i18n`Generating`, ConsoleColor.brightCyan)} ${this.logger.formatPath(module.originalPath)}`)
 				try {
 					await bundler.generate(module, module, this)
 				} catch (e) {
@@ -1918,10 +1944,7 @@ export class Builder extends EventEmitter {
 		}
 		// 保存源映射
 		if (module.sourceMap && this.sourceMap && !this.sourceMapOptions.inline) {
-			const writeTask = this.logger.begin({
-				source: i18n`Writing`,
-				fileName: module.sourceMapPath
-			})
+			const writeTask = this.logger.begin(`${color(i18n`Writing`, ConsoleColor.brightCyan)} ${this.logger.formatPath(module.sourceMapPath!)}`)
 			try {
 				await this.fs.writeFile(module.sourceMapPath!, JSON.stringify(module.sourceMapObject, undefined, this.sourceMapOptions.indent))
 			} catch (e) {
@@ -1936,10 +1959,7 @@ export class Builder extends EventEmitter {
 		}
 		// 保存文件
 		if (module.data !== undefined) {
-			const writeTask = this.logger.begin({
-				source: i18n`Writing`,
-				fileName: module.originalPath
-			})
+			const writeTask = this.logger.begin(`${color(i18n`Writing`, ConsoleColor.brightCyan)} ${this.logger.formatPath(module.originalPath)}`)
 			try {
 				await this.fs.writeFile(module.path, module.data)
 			} catch (e) {
@@ -1951,10 +1971,7 @@ export class Builder extends EventEmitter {
 				this.logger.end(writeTask)
 			}
 		} else if (!pathEquals(module.originalPath, module.path, this.fs.isCaseInsensitive)) {
-			const copyTask = this.logger.begin({
-				source: i18n`Copying`,
-				fileName: module.originalPath
-			})
+			const copyTask = this.logger.begin(`${color(i18n`Copying`, ConsoleColor.brightCyan)} ${this.logger.formatPath(module.originalPath)}`)
 			try {
 				await this.fs.copyFile(module.originalPath, module.path)
 			} catch (e) {

@@ -21,7 +21,7 @@ export function build() {
 			{
 				match: "./package.json",
 				process(module) {
-					module.content = module.content.replace(/\.\/dist/g, "./")
+					module.content = module.content.replace(/\.\/dist\//g, "./")
 				}
 			},
 			{

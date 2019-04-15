@@ -17,7 +17,7 @@ async function main() {
 
 	// Node >= 10.12 才支持 ES2018
 	const { i18n, service } = require("../core/i18n") as typeof import("../core/i18n")
-	if (parseFloat(process.version.slice(1)) < 10.12) {
+	if (/^v\d\.|^v10\.\d\.|^v10\.1[01]\./.test(process.version)) {
 		console.error(i18n`TPack requires Node.js >= 10.15, currently ${process.version}`)
 		console.log(i18n`Visit https://nodejs.org/ to download the latest version`)
 		process.exitCode = -8

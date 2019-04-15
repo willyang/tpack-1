@@ -1,13 +1,15 @@
 import { encode as encodeHTML } from "ent"
 import { createServer, IncomingMessage, Server, ServerResponse, STATUS_CODES } from "http"
 import { AddressInfo } from "net"
-import { join } from "path"
+import { join, basename, dirname, normalize, sep, relative } from "path"
 import { parse } from "url"
 import { bold, color, ConsoleColor } from "../utils/ansi"
 import { open } from "../utils/process"
 import { Builder } from "./builder"
 import { i18n } from "./i18n"
 import { Module, ModuleState } from "./module"
+import { createReadStream } from "fs";
+import { containsPath, relativePath, setDir, getDir, normalizePath } from "../utils/path";
 
 /** 表示一个开发服务器 */
 export class DevServer {
@@ -135,6 +137,7 @@ export class DevServer {
 	private _processRequest = async (req: IncomingMessage, res: ServerResponse) => {
 		let { pathname, query } = parse(req.url!)
 		const outPath = join(this.builder.outDir, decodeURIComponent(pathname!))
+		// 响应已编译的文件
 		try {
 			const module = await this.builder.getEmittedModule(outPath)
 			if (module) {
@@ -143,6 +146,20 @@ export class DevServer {
 		} catch (e) {
 			return this._handleError(req, res, e)
 		}
+		// 响应目录浏览
+		const files = new Map<string, Module | null>()
+		const dir = outPath.replace(/[\/\\]$/, "")
+		for (const [path, module] of this.builder.emittedModules) {
+			if (dir === getDir(path)) {
+				files.set(path, module)
+			} else if (path.startsWith(dir + sep)) {
+				files.set(join(dir, relative(dir, path).replace(/[\/\\].*$/, "")), null)
+			}
+		}
+		if (files.size) {
+			return this._handleFileList(req, res, files)
+		}
+
 		return this._handleError(req, res, { code: "ENOENT" })
 	}
 
@@ -168,7 +185,15 @@ export class DevServer {
 			'Content-Type': module.type,
 			'ETag': module.emitTime
 		})
-		res.end(module.data)
+		if (module.data === undefined) {
+			const stream = createReadStream(module.originalPath)
+			stream.on('error', error => {
+				this._handleError(req, res, error)
+			})
+			stream.pipe(res)
+		} else {
+			res.end(module.buffer)
+		}
 	}
 
 	/**
@@ -196,6 +221,51 @@ export class DevServer {
 		if (statusCode >= 500) {
 			this.builder.logger.error(error)
 		}
+	}
+
+	/**
+	 * 处理一个文件夹
+	 * @param req 当前的请求对象
+	 * @param res 当前的响应对象
+	 * @param error 要处理的错误
+	 */
+	private _handleFileList(req: IncomingMessage, res: ServerResponse, list: Map<string, Module | null>) {
+		// 确保目录以 / 结尾
+		const { pathname, query } = parse(req.url!)
+		if (!pathname!.endsWith("/")) {
+			res.writeHead(301, {
+				'Location': pathname + '/' + (query || "")
+			})
+			return res.end()
+		}
+
+		let dirs = ""
+		let files = ""
+
+		for (const [path, module] of list) {
+			const name = basename(path)
+			if (!module) {
+				dirs += `\n\t\t<li><a href="${encodeHTML(name)}">${encodeHTML(name)}/</a></li>`
+				continue
+			}
+			const sourceName = relativePath(getDir(setDir(path, this.builder.rootDir, this.builder.outDir)), module.originalPath)
+			files += `\n\t\t<li><a href="${encodeHTML(name)}">${encodeHTML(name)}</a>${name === sourceName ? "" : `(${sourceName})`}</li>`
+		}
+		res.end(`<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>${encodeHTML(pathname!)}</title>
+</head>
+<body>
+	<h3>${encodeHTML(pathname!)}</h3>
+	<ul style="list-style: none; line-height: 1.5">
+		${pathname === "/" ? "" : `<li><a href="../">../</a></li>`}
+		${dirs}
+		${files}
+	</ul>
+</body>
+</html>`)
 	}
 
 }

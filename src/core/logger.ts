@@ -179,13 +179,9 @@ export class Logger {
 		if (typeof log === "string") {
 			content = log
 		} else if (log instanceof Error) {
-			content = `${color(`[${log.name}]`, ConsoleColor.brightRed)}${log.message}\n${color(this.formatErrorStack(log.stack || ""), ConsoleColor.brightBlack)}`
+			content = `${color(`[${log.name}]`, ConsoleColor.brightRed)}${log.message}\n${color(this.formatErrorStack(log.stack || ""), ConsoleColor.brightBlack)} `
 		} else {
 			content = ""
-			// 添加名字
-			if (log.source) {
-				content += color(`[${log.source}]`, ConsoleColor.brightCyan)
-			}
 			// 添加路径
 			if (log.fileName) {
 				content += bold(this.formatPath(log.fileName))
@@ -200,6 +196,10 @@ export class Logger {
 				if (log.message != undefined || log.error) {
 					content += color(": ", ConsoleColor.brightBlack)
 				}
+			}
+			// 添加名字
+			if (log.source) {
+				content += color(`[${log.source}]`, ConsoleColor.brightCyan)
 			}
 			// 添加信息
 			if (log.message != undefined) {

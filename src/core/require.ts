@@ -1,4 +1,4 @@
-import Module from "module"
+import Module = require("module")
 import { AsyncQueue } from "../utils/asyncQueue"
 import { isAbsolutePath } from "../utils/path"
 import { exec } from "../utils/process"

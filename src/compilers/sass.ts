@@ -15,6 +15,7 @@ export default class Sass extends Compiler implements Processor {
 				omitSourceMapUrl: true,
 				outFile: module.originalPath,
 				outputStyle: "expanded",
+				includePaths: [builder.rootDir],
 				...options
 			}, (error: any, result: any) => {
 				if (error) {
