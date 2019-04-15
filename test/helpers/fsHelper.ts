@@ -13,10 +13,10 @@ export const root = resolve("__test__")
  * @param entries 要创建的文件和文件夹列表
  */
 export async function init(entries: FileEntries) {
-	await autoRetry(() => { deleteEntry(root) })
-	await autoRetry(() => { createEntries(entries, root) })
-	cwd = process.cwd()
-	await autoRetry(() => { changeDir(root) })
+	await retryIfError(() => { deleteEntry(root) })
+	await retryIfError(() => { createEntries(entries, root) })
+	await retryIfError(() => { cwd = process.cwd() })
+	await retryIfError(() => { changeDir(root) })
 }
 
 /** 表示一个文件项 */
@@ -27,8 +27,8 @@ export interface FileEntries {
 /** 删除用于测试的文件 */
 export async function uninit() {
 	if (cwd) {
-		await autoRetry(() => { changeDir(cwd) })
-		await autoRetry(() => { deleteEntry(root) })
+		await retryIfError(() => { changeDir(cwd) })
+		await retryIfError(() => { deleteEntry(root) })
 		cwd = undefined
 	}
 }
@@ -51,24 +51,6 @@ export function check(entries: FileEntries, dir = root) {
 				assert.ifError(e)
 			}
 			check(entry, child)
-		}
-	}
-}
-
-/**
- * 设置当前的工作目录
- * @param path 新工作目录文件夹
- */
-function changeDir(path: string) {
-	try {
-		return process.chdir(path)
-	} catch (e) {
-		if (e.code === "ENOENT") {
-			fs.mkdirSync(path)
-			process.chdir(path)
-		}
-		if (process.cwd() !== path) {
-			throw e
 		}
 	}
 }
@@ -112,18 +94,36 @@ function deleteEntry(path: string) {
 }
 
 /**
+ * 更改当前的工作目录
+ * @param cwd 新工作目录
+ */
+function changeDir(cwd: string) {
+	try {
+		return process.chdir(cwd)
+	} catch (e) {
+		if (e.code === "ENOENT") {
+			fs.mkdirSync(cwd)
+			process.chdir(cwd)
+		}
+		if (process.cwd() !== cwd) {
+			throw e
+		}
+	}
+}
+
+/**
  * 执行指定的函数，如果执行出错则重试
  * @param callback 要执行的函数
  * @param times 重试的次数
  */
-function autoRetry(callback, times = 3) {
-	return new Promise((resolve, reject) => {
+function retryIfError<T>(callback: () => T, times = 3) {
+	return new Promise<T>((resolve, reject) => {
 		try {
 			return resolve(callback())
 		} catch (e) {
 			if (times > 0) {
 				return setTimeout(() => {
-					autoRetry(callback, times - 1).then(resolve, reject)
+					retryIfError(callback, times - 1).then(resolve, reject)
 				}, 9)
 			}
 			reject(e)
@@ -132,12 +132,12 @@ function autoRetry(callback, times = 3) {
 }
 
 /**
- * 模拟 IO 错误状态下执行函数
+ * 模拟 IO 错误然后执行函数
  * @param func 要执行的函数
  * @param sysCall 要模拟错误的系统调用
  * @param errorCodes 要模拟的错误代码
  */
-export async function simulateIOError(func: () => any, sysCall: string, errorCodes = ["UNKNOWN"]) {
+export async function simulateIOError<T>(func: () => T, sysCall: string, errorCodes = ["UNKNOWN"]) {
 	let index = 0
 	const original = fs[sysCall]
 	fs[sysCall] = (...args: any[]) => {

@@ -1,28 +1,28 @@
 [
 	{
 		"match": "*.less",
-		"use": "../../compilers/less"
+		"use": "../compilers/less"
 	},
 	{
 		"match": "*.{sass,scss}",
-		"use": "../../compilers/sass"
+		"use": "../compilers/sass"
 	},
 	{
 		"match": "*.styl",
-		"use": "../../compilers/stylus"
+		"use": "../compilers/stylus"
 	},
 	{
 		"match": [
 			"*.{js,jsx}",
 			"!**/node_modules/**"
 		],
-		"use": "../../compilers/typescript"
+		"use": "../compilers/typescript"
 	},
 	{
 		"match": [
 			"*.{ts,tsx}",
 			"!*.d.ts"
 		],
-		"use": "../../compilers/typescript"
+		"use": "../compilers/typescript"
 	}
 ]

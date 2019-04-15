@@ -4,7 +4,6 @@ import { AddressInfo } from "net"
 import { join } from "path"
 import { parse } from "url"
 import { bold, color, ConsoleColor } from "../utils/ansi"
-import { formatDate } from "../utils/misc"
 import { open } from "../utils/process"
 import { Builder } from "./builder"
 import { i18n } from "./i18n"
@@ -90,7 +89,7 @@ export class DevServer {
 			this.httpServer.on("error", startError)
 			this.httpServer.listen(this.port, this.hostname, this.backlog, () => {
 				this.httpServer.off("error", startError)
-				this.builder.logger.info(i18n`${color(formatDate(new Date(), "[HH:mm:ss]"), ConsoleColor.brightBlack)} ${color(i18n`Started`, ConsoleColor.brightCyan)} Server running at ${bold(this.url!)}`)
+				this.builder.logger.info(i18n`${color(i18n`Started`, ConsoleColor.brightCyan)} Server running at ${bold(this.url!)}`)
 				if (this.open) {
 					open(this.url!, false, typeof this.open === "string" ? this.open : undefined)
 				}

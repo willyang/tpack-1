@@ -7,7 +7,7 @@ import { stripBOM } from "../utils/misc"
 
 /**
  * 解析命令行参数
- * @param commandLineOptions 所有选项列表
+ * @param commandLineOptions 所有内置的命令行选项
  * @param onError 解析出错后的回调函数
  * @param argv 要解析的命令行参数列表
  * @param startIndex 开始解析的索引
@@ -117,10 +117,10 @@ export function parseCommandLineArguments(commandLineOptions?: { [option: string
 
 /**
  * 格式化所有选项
- * @param commandLineOptions 所有选项列表
- * @param columns 布局的最大列数
+ * @param commandLineOptions 所有内置的命令行选项
+ * @param maxWidth 允许布局的最大宽度（一般地，西文字母宽度为 1，中文文字宽度为 2）
  */
-export function formatCommandLineOptions(commandLineOptions: { [option: string]: CommandLineOption }, columns = process.stdout.columns || Infinity) {
+export function formatCommandLineOptions(commandLineOptions: { [option: string]: CommandLineOption }, maxWidth = process.stdout.columns || Infinity) {
 	// 计算所有的标题
 	const keys = new Map<string, CommandLineOption>()
 	let maxColumns = 0
@@ -152,7 +152,7 @@ export function formatCommandLineOptions(commandLineOptions: { [option: string]:
 		if (commandOption.group) {
 			result += `\n${service.translate(commandOption.group)}:\n`
 		}
-		result += `  ${title.padEnd(maxColumns - 2)}${splitString(service.translate(commandOption.description!) + (commandOption.default ? i18n` [default: ${commandOption.default}]` : ""), 2, columns - maxColumns).join(`\n${" ".repeat(maxColumns)}`)}`
+		result += `  ${title.padEnd(maxColumns - 2)}${splitString(service.translate(commandOption.description!) + (commandOption.default ? i18n` [default: ${commandOption.default}]` : ""), 2, maxWidth - maxColumns).join(`\n${" ".repeat(maxColumns)}`)}`
 	}
 	return result
 }
@@ -173,7 +173,7 @@ export interface CommandLineOption {
 	multipy?: boolean
 }
 
-/** 所有支持的模块扩展名 */
+/** 所有支持的文件扩展名 */
 export const extensions: { [ext: string]: string } = {
 	".mjs": "esm",
 	".ts": "ts-node/register",

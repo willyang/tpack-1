@@ -2,12 +2,11 @@ import { Processor, Builder } from "../core/builder"
 import { Module } from "../core/module"
 import { Compiler } from "./common"
 
-/** 表示一个 Sass 插件 */
 export default class Sass extends Compiler implements Processor {
 	get outExt() { return ".css" }
 	get vendorName() { return "node-sass" }
-	async compile(module: Module, options: any, sass: any, builder: Builder) {
-		return await new Promise<void>(resolve => {
+	compile(module: Module, options: any, sass: any, builder: Builder) {
+		return new Promise<void>(resolve => {
 			sass.render({
 				file: module.originalPath,
 				data: module.content,
@@ -31,13 +30,13 @@ export default class Sass extends Compiler implements Processor {
 					module.buffer = result.css
 					if (result.map) {
 						const map = JSON.parse(result.map.toString())
-						for (var i = 0; i < map.sources.length; i++) {
+						for (let i = 0; i < map.sources.length; i++) {
 							map.sources[i] = module.resolve(map.sources[i])
 						}
 						module.applySourceMap(map)
 					}
-					for (const dep of result.stats.includedFiles) {
-						module.addDependency(dep, {
+					for (const ref of result.stats.includedFiles) {
+						module.addReference(ref, {
 							source: Sass.name,
 							type: "@import"
 						})

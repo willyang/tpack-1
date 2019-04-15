@@ -6,15 +6,15 @@ import { Compiler } from "./common"
 export default class Coffee extends Compiler implements Processor {
 	get outExt() { return ".js" }
 	get vendorName() { return "coffee-script" }
-	async compile(module: Module, options: any, cs: any, builder: Builder) {
+	async compile(module: Module, options: any, coffeescript: any, builder: Builder) {
 		try {
-			const result = cs.compile(module.content, options)
+			const result = coffeescript.compile(module.content, options)
 			module.content = result.js || result;
 			if (result.v3SourceMap) {
 				module.applySourceMap(result.v3SourceMap)
 			}
 		} catch (e) {
-			return module.addError({
+			module.addError({
 				source: Coffee.name,
 				error: e,
 				line: e.location && e.location.first_line,

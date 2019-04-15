@@ -215,81 +215,67 @@ interface RecursiveArray<T> extends Array<T | RecursiveArray<T>> { }
 
 /** 表示模式的选项 */
 export interface PatternOptions {
-
 	/**
 	 * 模式的根路径
 	 * @default process.cwd()
 	 */
 	baseDir?: string
-
 	/**
 	 * 是否禁止使用绝对路径，禁止后开头的 `/` 按 `./` 处理，如果启用，Windows 系统下绝对路径将禁用 `\` 转义功能
 	 * @default false
 	 */
 	noAbsolute?: boolean
-
 	/**
 	 * 是否禁止通过开头的 `../` 跳出根路径
 	 * @default false
 	 */
 	noBack?: boolean
-
 	/**
 	 * 是否禁止将 `!` 解析为非
 	 * @default false
 	 */
 	noNegate?: boolean
-
 	/**
 	 * 是否禁用大括号扩展
 	 * @default false
 	 */
 	noBrace?: boolean
-
 	/**
 	 * 是否禁用中括号扩展
 	 * @default false
 	 */
 	noBracket?: boolean
-
 	/**
 	 * 是否允许通配符 `*` 和 `?` 匹配 `.` 开头的路径
 	 * @default false
 	 */
 	dot?: boolean
-
 	/**
 	 * 是否允许通过匹配文件夹直接匹配内部所有子文件
 	 * @default false
 	 */
 	matchDir?: boolean
-
 	/**
 	 * 是否只匹配基路径
 	 * @default false
 	 */
 	matchBase?: boolean
-
 	/**
 	 * 是否忽略路径的大小写
 	 * @default isCaseInsensitive
 	 */
 	ignoreCase?: boolean
-
 }
 
 /** 表示一个已编译的模式 */
 export interface CompiledPattern {
-
 	/** 模式基路径 */
 	base: string
-
 	/**
 	 * 测试当前模式是否匹配指定的路径
 	 * @param fullPath 要测试的绝对路径
 	 */
 	test(fullPath: string): boolean
-
 }
 
 /** 将指定的通配符转为等价的正则表达式 */

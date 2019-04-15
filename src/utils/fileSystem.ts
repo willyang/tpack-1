@@ -782,31 +782,26 @@ export class FileSystem {
 
 /** 表示遍历文件或文件夹的选项 */
 export interface WalkOptions {
-
 	/** 如果为 `true` 则链接被解析为实际的路径，否则不解析链接 */
 	follow?: boolean
-
 	/**
 	 * 处理错误的回调函数
 	 * @param error 出现的错误对象
 	 * @param path 出现的错误路径
 	 */
 	error?(error: NodeJS.ErrnoException, path: string): void
-
 	/**
 	 * 处理一个文件的回调函数
 	 * @param path 当前文件的路径
 	 * @param stats 当前文件的属性对象
 	 */
 	file?(path: string, stats: Stats): void
-
 	/**
 	 * 处理一个文件夹的回调函数，如果函数返回 `false` 则跳过遍历此文件夹
 	 * @param path 当前文件夹的路径
 	 * @param stats 当前文件夹的属性对象
 	 */
 	dir?(path: string, stats: Stats): boolean | void
-
 	/**
 	 * 即将遍历指定的文件夹时的回调函数，如果函数返回 `false` 则跳过遍历此文件夹
 	 * @param path 当前文件夹的路径
@@ -814,14 +809,12 @@ export interface WalkOptions {
 	 * @param stats 当前文件夹的属性对象
 	 */
 	scan?(path: string, entries: string[], stats: Stats): boolean | void
-
 	/**
 	 * 处理一个其它类型文件的回调函数
 	 * @param path 当前文件的路径
 	 * @param stats 当前文件的属性对象
 	 */
 	other?(path: string, stats: Stats): void
-
 }
 
 /** 安全调用系统 IO 函数，如果出现 EMFILE 错误则自动延时 */
@@ -850,19 +843,14 @@ function safeCall(func: DelayedCall["function"], args: DelayedCall["arguments"],
 
 /** 表示一个延时调用 */
 interface DelayedCall {
-
 	/** 调用的函数 */
 	function: (...args: any[]) => void
-
 	/** 调用的参数 */
 	arguments: any[]
-
 	/** 调用的回调函数 */
 	callback: (error: NodeJS.ErrnoException, data: any) => void
-
 	/** 下一个调用 */
 	next?: DelayedCall
-
 }
 
 /** 一个已延时的调用链表尾 */

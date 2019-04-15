@@ -1,10 +1,11 @@
 /**
  * 执行函数并捕获控制台输出内容
  * @param func 要执行的函数
- * * @param outputs 接收捕获的控制台输出内容
+ * * @param stdout 接收捕获的标准流输出内容
+ * * @param stderr 接收捕获的错误流输出内容
  * @returns 返回原函数的返回值
  */
-export async function redirectStdio(func: (stdout: (string | Buffer)[], stderr: (string | Buffer)[]) => any) {
+export async function captureStdio(func: (stdout: (string | Buffer)[], stderr: (string | Buffer)[]) => any) {
 	const stdouts: (string | Buffer)[] = []
 	const stderrs: (string | Buffer)[] = []
 	const oldStdoutWrite = process.stdout.write

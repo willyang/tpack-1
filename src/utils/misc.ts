@@ -1,5 +1,5 @@
 /**
- * 删除 UTF-8 BOM 字符
+ * 删除字符串开头的 UTF-8 BOM 字符
  * @param content 要处理的字符串
  */
 export function stripBOM(content: string) {
@@ -11,22 +11,25 @@ export function stripBOM(content: string) {
 
 /**
  * 按顺序插入元素到已排序的数组中
- * @param array 已排序的数组
- * @param value 要插入的值
+ * @param sortedArray 已排序的数组
+ * @param item 要插入的值
  * @param comparer 确定元素顺序的回调函数
+ * * @param x 要比较的第一个元素
+ * * @param y 要比较的第二个元素
+ * * @returns 如果返回 `true`，则将 `x` 排在 `y` 的前面，否则相反
  */
-export function insertOrdered<T>(array: T[], value: T, comparer: (x: T, y: T) => boolean) {
+export function insertSorted<T>(sortedArray: T[], item: T, comparer: (x: T, y: T) => boolean) {
 	let start = 0
-	let end = array.length - 1
+	let end = sortedArray.length - 1
 	while (start <= end) {
 		const middle = start + ((end - start) >> 1)
-		if (comparer(array[middle], value)) {
+		if (comparer(sortedArray[middle], item)) {
 			start = middle + 1
 		} else {
 			end = middle - 1
 		}
 	}
-	array.splice(start, 0, value)
+	sortedArray.splice(start, 0, item)
 }
 
 /**
@@ -116,7 +119,7 @@ export function formatHRTime(hrTime: [number, number]) {
 }
 
 /**
- * 格式化文件体积
+ * 格式化指定的字节大小
  * @param byteSize 要格式化的字节大小
  * @example formatSize(1024) // "1.00KB"
  */

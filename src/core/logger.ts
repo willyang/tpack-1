@@ -1,4 +1,4 @@
-import { bold, color, ConsoleColor, ellipsisString, formatCodeFrame, removeAnsiCodes } from "../utils/ansi"
+import { bold, color, ConsoleColor, truncateString, formatCodeFrame, removeAnsiCodes } from "../utils/ansi"
 import { clear, hideCursor, showCursor } from "../utils/commandLine"
 import { formatDate } from "../utils/misc"
 import { relativePath, resolvePath } from "../utils/path"
@@ -18,12 +18,12 @@ export class Logger {
 		this.logLevel = options.logLevel !== undefined ? typeof options.logLevel === "string" ? LogLevel[options.logLevel] : options.logLevel : LogLevel.log
 		this.ignore = options.ignore ? options.ignore instanceof RegExp ? log => (options.ignore as RegExp).test(log.message || "") : options.ignore : undefined
 		this.colors = options.colors !== undefined ? options.colors : process.stdout.isTTY === true && !process.env["NODE_DISABLE_COLORS"]
-		this.printFullPath = !!options.printFullPath
+		this.showFullPath = !!options.showFullPath
 		this.baseDir = options.baseDir || process.cwd()
-		this.codeFrame = !!options.codeFrame
-		this.codeFrameOptions = { columns: process.stdout.columns, rows: 3, showLine: true, showColumn: true, tab: "    ", ...(typeof options.codeFrame === "object" ? options.codeFrame : null) }
+		this.codeFrame = options.codeFrame !== false
+		this.codeFrameOptions = { maxWidth: process.stdout.columns, maxHeight: 3, showLine: true, showColumn: true, tab: "    ", ...(typeof options.codeFrame === "object" ? options.codeFrame : undefined) }
 		this.persistent = options.persistent !== undefined ? options.persistent : process.stdout.isTTY !== true
-		this.spinner = options.spinner !== undefined ? options.spinner : process.stdout.isTTY === true
+		this.showSpinner = options.showSpinner !== undefined ? options.showSpinner : process.stdout.isTTY === true
 		this.spinnerFrames = options.spinnerFrames || (process.platform === "win32" && /^\d\./.test(require("os").release()) ? ["-", "\\", "|", "/"] : ["⠋ ", "⠙ ", "⠹ ", "⠸ ", "⠼ ", "⠴ ", "⠦ ", "⠧ ", "⠇ ", "⠏ "])
 		this.spinnerInterval = options.spinnerInterval || 90
 		// @ts-ignore
@@ -39,59 +39,66 @@ export class Logger {
 	// #region 日志
 
 	/**
-	 * 记录一条详细日志
+	 * 记录一条调试日志
 	 * @param log 要记录的日志或错误对象
+	 * @param persistent 是否在清屏时保留此日志
 	 */
-	verbose(log: string | Error | LogEntry) {
-		return this.write(log, LogLevel.verbose)
+	debug(log: string | Error | LogEntry, persistent?: boolean) {
+		return this.write(log, LogLevel.debug, persistent)
 	}
 
 	/**
 	 * 记录一条普通日志
 	 * @param log 要记录的日志或错误对象
+	 * @param persistent 是否在清屏时保留此日志
 	 */
-	log(log: string | Error | LogEntry) {
-		return this.write(log, LogLevel.log)
+	log(log: string | Error | LogEntry, persistent?: boolean) {
+		return this.write(log, LogLevel.log, persistent)
 	}
 
 	/**
 	 * 记录一条信息日志
 	 * @param log 要记录的日志或错误对象
+	 * @param persistent 是否在清屏时保留此日志
 	 */
-	info(log: string | Error | LogEntry) {
-		return this.write(log, LogLevel.info)
+	info(log: string | Error | LogEntry, persistent?: boolean) {
+		return this.write(log, LogLevel.info, persistent)
 	}
 
 	/**
 	 * 记录一条成功日志
 	 * @param log 要记录的日志或错误对象
+	 * @param persistent 是否在清屏时保留此日志
 	 */
-	success(log: string | Error | LogEntry) {
-		return this.write(log, LogLevel.success)
+	success(log: string | Error | LogEntry, persistent?: boolean) {
+		return this.write(log, LogLevel.success, persistent)
 	}
 
 	/**
 	 * 记录一条警告日志
 	 * @param log 要记录的日志或错误对象
+	 * @param persistent 是否在清屏时保留此日志
 	 */
-	warning(log: string | Error | LogEntry) {
-		return this.write(log, LogLevel.warning)
+	warning(log: string | Error | LogEntry, persistent?: boolean) {
+		return this.write(log, LogLevel.warning, persistent)
 	}
 
 	/**
 	 * 记录一条错误日志
 	 * @param log 要记录的日志或错误对象
+	 * @param persistent 是否在清屏时保留此日志
 	 */
-	error(log: string | Error | LogEntry) {
-		return this.write(log, LogLevel.error)
+	error(log: string | Error | LogEntry, persistent?: boolean) {
+		return this.write(log, LogLevel.error, persistent)
 	}
 
 	/**
 	 * 记录一条致命错误日志
 	 * @param log 要记录的日志或错误对象
+	 * @param persistent 是否在清屏时保留此日志
 	 */
-	fatal(log: string | Error | LogEntry) {
-		return this.write(log, LogLevel.fatal)
+	fatal(log: string | Error | LogEntry, persistent?: boolean) {
+		return this.write(log, LogLevel.fatal, persistent)
 	}
 
 	/** 获取或设置允许打印的最低日志等级 */
@@ -123,24 +130,30 @@ export class Logger {
 	 * 底层实现打印一条日志
 	 * @param log 要格式化的日志或错误对象或错误信息
 	 * @param level 日志的等级
+	 * @param persistent 是否在清屏时保留此日志
 	 */
-	protected write(log: string | Error | LogEntry, level: LogLevel) {
-		if (level < this.logLevel || this.ignore && this.ignore(typeof log === "string" ? { message: log } : log instanceof Error ? { error: log, message: log.message, printErrorStack: true } : log, level)) {
+	protected write(log: string | Error | LogEntry, level: LogLevel, persistent?: boolean) {
+		if (level < this.logLevel || this.ignore && this.ignore(typeof log === "string" ? { message: log } : log instanceof Error ? { error: log, message: log.message, showErrorStack: true } : log, level)) {
 			return
 		}
 		const content = this.formatLog(log)
+		if (persistent) {
+			const persistentLog = `${color(formatDate(new Date(), "[HH:mm:ss]"), ConsoleColor.brightBlack)} ${level === LogLevel.error ? this.errorIcon : level === LogLevel.warning ? this.warningIcon : level === LogLevel.fatal ? this.fatalIcon : level === LogLevel.success ? this.successIcon : ""}${content}`
+			this._persistentLog = this._persistentLog != undefined ? `${this._persistentLog}\n${persistentLog}` : persistentLog
+			return console.info(persistentLog)
+		}
 		switch (level) {
 			case LogLevel.error:
 				return console.error(`${color(`${++this.errorOrWarningCounter}) ${this.errorIcon}`, ConsoleColor.brightRed)}${content}`)
 			case LogLevel.warning:
 				return console.warn(`${color(`${++this.errorOrWarningCounter}) ${this.warningIcon}`, ConsoleColor.brightYellow)}${content}`)
 			case LogLevel.info:
-				return console.info(content)
+				return console.info(`${color(formatDate(new Date(), "[HH:mm:ss]"), ConsoleColor.brightBlack)} ${content}`)
 			case LogLevel.fatal:
 				return console.error(`${color(formatDate(new Date(), "[HH:mm:ss]"), ConsoleColor.brightBlack)} ${color(this.fatalIcon, ConsoleColor.brightRed)}${content}`)
 			case LogLevel.success:
 				return console.info(`${color(formatDate(new Date(), "[HH:mm:ss]"), ConsoleColor.brightBlack)} ${color(this.successIcon, ConsoleColor.brightGreen)}${content}`)
-			case LogLevel.verbose:
+			case LogLevel.debug:
 				return console.debug(`${color(formatDate(new Date(), "[HH:mm:ss]"), ConsoleColor.brightBlack)} ${content}`)
 			default:
 				return console.log(content)
@@ -166,7 +179,7 @@ export class Logger {
 		if (typeof log === "string") {
 			content = log
 		} else if (log instanceof Error) {
-			content = `${color(`[${log.name}]`, ConsoleColor.brightRed)}${log.message}\n${color(this.formatStack(log.stack || ""), ConsoleColor.brightBlack)}`
+			content = `${color(`[${log.name}]`, ConsoleColor.brightRed)}${log.message}\n${color(this.formatErrorStack(log.stack || ""), ConsoleColor.brightBlack)}`
 		} else {
 			content = ""
 			// 添加名字
@@ -201,13 +214,13 @@ export class Logger {
 			// 添加源代码片段
 			if (this.codeFrame) {
 				if (log.codeFrame) {
-					content += `\n${color(log.codeFrame, ConsoleColor.brightBlack)}`
+					content += `\n\n${color(log.codeFrame, ConsoleColor.brightBlack)}\n`
 				} else if (log.codeFrame == undefined && log.content && log.line !== undefined) {
-					content += `\n${color(formatCodeFrame(log.content, log.line, log.column, log.endLine, log.endColumn, this.codeFrameOptions.columns, this.codeFrameOptions.rows, this.codeFrameOptions.showLine, this.codeFrameOptions.showColumn, this.codeFrameOptions.tab), ConsoleColor.brightBlack)}`
+					content += `\n\n${color(formatCodeFrame(log.content, log.line, log.column, log.endLine, log.endColumn, this.codeFrameOptions.showLine, this.codeFrameOptions.showColumn, this.codeFrameOptions.tab, this.codeFrameOptions.maxWidth, this.codeFrameOptions.maxHeight), ConsoleColor.brightBlack)}\n`
 				}
 			}
 			// 添加堆栈信息
-			const stack = (this.logLevel === LogLevel.verbose || log.printErrorStack) && log.error && this.formatStack(log.error.stack || "")
+			const stack = (this.logLevel === LogLevel.debug || log.showErrorStack) && log.error && this.formatErrorStack(log.error.stack || "")
 			if (stack) {
 				content += `\n${color(stack, ConsoleColor.brightBlack)}`
 			}
@@ -223,7 +236,7 @@ export class Logger {
 	 * 格式化指定的错误堆栈信息
 	 * @param stack 要格式化的错误堆栈信息
 	 */
-	formatStack(stack: string) {
+	formatErrorStack(stack: string) {
 		const stacks: string[] = []
 		stack.replace(/^    at (.*)$/gm, (stack, line) => {
 			if (!/\((?:(?:(?:node|(?:internal\/[\w/]*)?\w+)\.js:\d+:\d+)|native)\)$/.test(line)) {
@@ -235,7 +248,7 @@ export class Logger {
 	}
 
 	/** 判断或设置是否显示完整绝对路径 */
-	printFullPath: boolean
+	showFullPath: boolean
 
 	/** 获取或设置路径的基路径 */
 	baseDir: string
@@ -245,7 +258,7 @@ export class Logger {
 	 * @param path 要格式化的路径
 	 */
 	formatPath(path: string) {
-		if (!this.printFullPath) {
+		if (!this.showFullPath) {
 			const relative = relativePath(this.baseDir, path)
 			if (!relative.startsWith("../")) {
 				return relative
@@ -257,15 +270,25 @@ export class Logger {
 	/** 判断或设置是否禁止清除日志 */
 	persistent: boolean
 
+	/** 已保留的固定日志 */
+	private _persistentLog?: string
+
 	/**
 	 * 清除控制台中的所有日志
+	 * @param all 是否清除所有日志
 	 */
-	clear() {
+	clear(all?: boolean) {
 		this.errorOrWarningCounter = 0
+		if (all) {
+			delete this._persistentLog
+		}
 		if (this.persistent) {
 			return
 		}
 		clear()
+		if (this._persistentLog) {
+			console.info(this._persistentLog)
+		}
 	}
 
 	// #endregion
@@ -282,8 +305,8 @@ export class Logger {
 		content: string
 	}
 
-	/** 获取或设置是否打印进度指示器 */
-	spinner: boolean
+	/** 获取或设置是否显示进度指示器 */
+	showSpinner: boolean
 
 	/**
 	 * 记录将开始执行指定的任务
@@ -292,15 +315,15 @@ export class Logger {
 	 */
 	begin(log: string | Error | LogEntry) {
 		// 不显示进度条则不记录信息
-		if (!this.spinner) {
+		if (!this.showSpinner) {
 			return null
 		}
 		// 更新进度条
 		const content = this.formatLog(log)
-		if (this.logLevel === LogLevel.verbose) {
-			this.verbose(`${color(i18n`Starting`, ConsoleColor.brightMagenta)} ${content}`)
+		if (this.logLevel === LogLevel.debug) {
+			this.debug(`${color(i18n`Starting`, ConsoleColor.brightMagenta)} ${content}`)
 		} else {
-			this.showSpinner(content)
+			this.startSpinner(content)
 		}
 		// 添加节点
 		const taskId: Logger["_lastTask"] = { content }
@@ -334,13 +357,13 @@ export class Logger {
 			this._lastTask = prev
 		}
 		// 如果当前任务是最后一个则更新进度
-		if (this.logLevel === LogLevel.verbose) {
-			this.verbose(`${color(formatDate(new Date(), "[HH:mm:ss]"), ConsoleColor.brightBlack)} ${color(i18n`Finished`, ConsoleColor.brightMagenta)} ${taskId.content}`)
+		if (this.logLevel === LogLevel.debug) {
+			this.debug(`${color(i18n`Finished`, ConsoleColor.brightMagenta)} ${taskId.content}`)
 		} else if (isLastTask) {
 			if (this._lastTask) {
-				this.showSpinner(this._lastTask.content)
+				this.startSpinner(this._lastTask.content)
 			} else {
-				this.hideSpinner()
+				this.stopSpinner()
 			}
 		}
 	}
@@ -350,7 +373,7 @@ export class Logger {
 	 */
 	reset() {
 		this._lastTask = undefined
-		this.hideSpinner()
+		this.stopSpinner()
 	}
 
 	/** 当前进度的百分比 */
@@ -361,7 +384,7 @@ export class Logger {
 	 * @param progress 要设置的进度值（0 到 100 之间）
 	 */
 	progress(progress: number) {
-		if (!this.spinner) {
+		if (!this.showSpinner) {
 			return
 		}
 		this._progressPercent = progress
@@ -370,9 +393,9 @@ export class Logger {
 			return
 		}
 		if (progress < 100) {
-			this.showSpinner("")
+			this.startSpinner("")
 		} else {
-			this.hideSpinner()
+			this.stopSpinner()
 		}
 	}
 
@@ -398,7 +421,7 @@ export class Logger {
 	 * 显示或更新进度指示器文案
 	 * @param spinnerText 要显示的文案
 	 */
-	showSpinner(spinnerText: string) {
+	startSpinner(spinnerText: string) {
 		// 如果日志等级为无日志则禁止一切输出
 		if (this.logLevel === LogLevel.silent) {
 			return
@@ -456,22 +479,18 @@ export class Logger {
 			if (this._spinnerText != undefined) {
 				content += this._spinnerText.replace(/[\n\r][^]*$/, "")
 			}
-			this._resolvedSpinnerText = ellipsisString(content, (process.stdout.columns || Infinity) - this.spinnerFrames[index].length)
+			this._resolvedSpinnerText = truncateString(content, undefined, (process.stdout.columns || Infinity) - this.spinnerFrames[index].length)
 		}
 		this._oldStdoutWrite!.call(process.stdout, `\u001b[0J\u001b[${this.spinnerColor}m${this.spinnerFrames[index]}\u001b[39m${this._resolvedSpinnerText}\u001b[1G`)
 	}
 
-	/**
-	 * 隐藏进度指示器
-	 */
-	hideSpinner() {
+	/** 隐藏进度指示器 */
+	stopSpinner() {
 		this.pauseSpinner()
 		this._resolvedSpinnerText = this._progressPercent = this._spinnerText = this._spinnerTimer = this._oldStderrWrite = this._oldStdoutWrite = undefined
 	}
 
-	/**
-	 * 暂时隐藏进度指示器
-	 */
+	/** 暂时隐藏进度指示器 */
 	pauseSpinner() {
 		// 如果进度条未显示则忽略
 		if (!this._spinnerTimer) {
@@ -511,7 +530,7 @@ export interface LoggerOptions {
 	 * 是否显示完整绝对路径
 	 * @default false
 	 */
-	printFullPath?: boolean
+	showFullPath?: boolean
 	/**
 	 * 显示相对路径时使用的基路径
 	 * @default process.cwd()
@@ -523,17 +542,7 @@ export interface LoggerOptions {
 	 */
 	codeFrame?: boolean | {
 		/**
-		 * 最大的列数
-		 * @default process.stdout.columns || Infinity
-		 */
-		columns?: number
-		/**
-		 * 最大的行数
-		 * @default 3
-		 */
-		rows?: number
-		/**
-		 * 是否打印行指示器
+		 * 是否打印行号
 		 * @default true
 		 */
 		showLine?: boolean
@@ -543,10 +552,20 @@ export interface LoggerOptions {
 		 */
 		showColumn?: boolean
 		/**
-		 * 打印时用于表示 TAB 的字符串
+		 * 用于代替 TAB 的字符串
 		 * @default "    "
 		 */
 		tab?: string
+		/**
+		 * 允许布局的最大宽度（一般地，西文字母宽度为 1，中文文字宽度为 2）
+		 * @default process.stdout.columns || Infinity
+		 */
+		maxWidth?: number
+		/**
+		 * 允许布局的最大行数，如果等于 0 则打印所有行
+		 * @default 3
+		 */
+		maxHeight?: number
 	}
 	/**
 	 * 是否禁止清除日志
@@ -554,10 +573,10 @@ export interface LoggerOptions {
 	 */
 	persistent?: boolean
 	/**
-	 * 是否打印进度指示器
+	 * 是否显示进度指示器
 	 * @default process.stdout.isTTY
 	 */
-	spinner?: boolean
+	showSpinner?: boolean
 	/**
 	 * 进度指示器的所有桢
 	 * @default ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
@@ -597,8 +616,8 @@ export interface LoggerOptions {
 
 /** 表示日志的等级 */
 export const enum LogLevel {
-	/** 详细信息 */
-	verbose,
+	/** 调试信息 */
+	debug,
 	/** 普通日志 */
 	log,
 	/** 重要信息 */
@@ -624,7 +643,7 @@ export interface LogEntry {
 	/** 原始错误对象 */
 	error?: Error
 	/** 是否打印错误堆栈信息 */
-	printErrorStack?: boolean
+	showErrorStack?: boolean
 	/** 日志相关的源文件名 */
 	fileName?: string
 	/** 日志相关的源内容 */

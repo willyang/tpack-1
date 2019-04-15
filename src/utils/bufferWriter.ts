@@ -69,11 +69,9 @@ export class BufferWriter extends Writable {
 
 /** 表示一个缓存写入器的选项 */
 export interface BufferWriterOptions extends WritableOptions {
-
 	/**
 	 * 初始的缓存大小
 	 * @default 65536
 	 */
 	capacity?: number
-
 }

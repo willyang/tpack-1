@@ -38,8 +38,8 @@ export namespace resolverTest {
 		})
 	}
 
-	export function afterEach() {
-		uninit()
+	export async function afterEach() {
+		await uninit()
 	}
 
 	export async function resolveTest() {

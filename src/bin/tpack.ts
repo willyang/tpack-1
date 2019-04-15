@@ -19,7 +19,9 @@ async function main() {
 	const { i18n, service } = require("../core/i18n") as typeof import("../core/i18n")
 	if (parseFloat(process.version.slice(1)) < 10.12) {
 		console.error(i18n`TPack requires Node.js >= 10.15, currently ${process.version}`)
-		console.log(i18n`Visit https://nodejs.org/ to download the Latest version`)
+		console.log(i18n`Visit https://nodejs.org/ to download the latest version`)
+		process.exitCode = -8
+		return
 	}
 
 	// 禁用未捕获的异步异常警告
@@ -254,7 +256,7 @@ async function main() {
 			description: "Print all outputs",
 			apply(options: BuilderOptions) {
 				const loggerOptions = options.logger || (options.logger = {})
-				loggerOptions.logLevel = LogLevel.verbose
+				loggerOptions.logLevel = LogLevel.debug
 			}
 		},
 		"--colors": {
@@ -275,30 +277,30 @@ async function main() {
 			description: "Show build progress",
 			apply(options: BuilderOptions) {
 				const loggerOptions = options.logger || (options.logger = {})
-				loggerOptions.spinner = true
+				loggerOptions.showSpinner = true
 			}
 		},
 		"--no-progress": {
 			description: "Hide build progress",
 			apply(options: BuilderOptions) {
 				const loggerOptions = options.logger || (options.logger = {})
-				loggerOptions.spinner = false
+				loggerOptions.showSpinner = false
 			}
 		},
 		"--full-path": {
 			description: "Print absolute paths in outputs",
 			apply(options: BuilderOptions) {
 				const loggerOptions = options.logger || (options.logger = {})
-				loggerOptions.printFullPath = true
+				loggerOptions.showFullPath = true
 			}
 		},
+
 		"--locale": {
+			group: "Advanced Options",
 			argument: "<locale>",
 			description: "Specify the locale of messages, e.g. zh-CN"
 		},
-
 		"--no-es-module": {
-			group: "Advanced Options",
 			description: "Disable ESModule support for .js files",
 		},
 		"--no-v8-cache": {
@@ -493,17 +495,19 @@ async function main() {
 	 */
 	function searchFile(names: string[]) {
 		let dir = process.cwd()
-		let prevDir: typeof dir
-		do {
+		while (true) {
 			for (const name of names) {
 				const fullPath = join(dir, name)
 				if (existsSync(fullPath)) {
 					return fullPath
 				}
 			}
-			prevDir = dir
+			const prevDir = dir
 			dir = dirname(dir)
-		} while (dir.length !== prevDir.length)
+			if (dir.length === prevDir.length) {
+				break
+			}
+		}
 		return null
 	}
 
@@ -536,6 +540,7 @@ async function main() {
 	}
 
 	function notImplemented(name: string) {
+		// todo
 		console.error(i18n`Option '${name}' is not implemented yet.`)
 		process.exit(-100)
 	}

@@ -58,22 +58,22 @@ export class Watcher extends FSWatcher {
 		super.remove(this.usePolling ? path : getDir(path))
 	}
 
-	protected async onChange(path: string, stats: Stats, lastWriteTime: number) {
-		this.builder.logger.log(`${color(formatDate(new Date(), "[HH:mm:ss]"), ConsoleColor.brightBlack)} ${color(i18n`Changed`, ConsoleColor.brightCyan)} ${this.builder.logger.formatPath(path)}`)
+	protected onChange(path: string, stats: Stats, lastWriteTime: number) {
+		this.builder.logger.info(`${color(i18n`Changed`, ConsoleColor.brightCyan)} ${this.builder.logger.formatPath(path)}`)
 		super.onChange(path, stats, lastWriteTime)
-		await this.builder.commitCreate(path)
+		this.builder.commitCreate(path)
 	}
 
-	protected async onCreate(path: string, stats: Stats) {
-		this.builder.logger.log(`${color(formatDate(new Date(), "[HH:mm:ss]"), ConsoleColor.brightBlack)} ${color(i18n`Created`, ConsoleColor.brightMagenta)} ${this.builder.logger.formatPath(path)}`)
+	protected onCreate(path: string, stats: Stats) {
+		this.builder.logger.info(`${color(i18n`Created`, ConsoleColor.brightMagenta)} ${this.builder.logger.formatPath(path)}`)
 		super.onCreate(path, stats)
-		await this.builder.commitChange(path)
+		this.builder.commitChange(path)
 	}
 
-	protected async onDelete(path: string, lastWriteTime: number) {
-		this.builder.logger.log(`${color(formatDate(new Date(), "[HH:mm:ss]"), ConsoleColor.brightBlack)} ${color(i18n`Deleted`, ConsoleColor.brightYellow)} ${this.builder.logger.formatPath(path)}`)
+	protected onDelete(path: string, lastWriteTime: number) {
+		this.builder.logger.info(`${color(i18n`Deleted`, ConsoleColor.brightYellow)} ${this.builder.logger.formatPath(path)}`)
 		super.onDelete(path, lastWriteTime)
-		await this.builder.commitDelete(path)
+		this.builder.commitDelete(path)
 	}
 
 	protected onError(e: NodeJS.ErrnoException, path: string) {

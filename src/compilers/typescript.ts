@@ -7,7 +7,7 @@ import { Compiler } from "./common"
 export default class TS extends Compiler implements Processor {
 	get outExt() { return ".js" }
 	get vendorName() { return "typescript" }
-	async compile(module: Module, options: any, ts: any, builder: Builder) {
+	compile(module: Module, options: any, ts: any, builder: Builder) {
 		// 忽略 .d.ts 文件
 		if (/\.d\.ts$/i.test(module.originalPath)) {
 			module.content = ""
@@ -27,18 +27,18 @@ export default class TS extends Compiler implements Processor {
 			}, options),
 			fileName: module.originalPath,
 			reportDiagnostics: true
-		};
+		}
 		delete options.compilerOptions.outDir
 
-		var result = ts.transpileModule(module.content, options)
+		const result = ts.transpileModule(module.content, options)
 		if (result.sourceMapText) {
 			// TS 未提供 API 以删除 # sourceMappingURL，手动删除之。
 			result.outputText = result.outputText.replace(/\/\/# sourceMappingURL=.*\s*$/, "")
 		}
 		for (var i = 0; i < result.diagnostics.length; i++) {
-			var diagnostic = result.diagnostics[i];
-			var startLoc = diagnostic.file && diagnostic.file.getLineAndCharacterOfPosition(diagnostic.start);
-			var endLoc = diagnostic.file && diagnostic.file.getLineAndCharacterOfPosition(diagnostic.start + diagnostic.length);
+			const diagnostic = result.diagnostics[i]
+			const startLoc = diagnostic.file && diagnostic.file.getLineAndCharacterOfPosition(diagnostic.start)
+			const endLoc = diagnostic.file && diagnostic.file.getLineAndCharacterOfPosition(diagnostic.start + diagnostic.length)
 			module.addError({
 				source: TS.name,
 				message: diagnostic.messageText,
@@ -47,12 +47,12 @@ export default class TS extends Compiler implements Processor {
 				column: startLoc && startLoc.character,
 				endLine: endLoc && endLoc.line,
 				endColumn: endLoc && endLoc.character
-			});
+			})
 		}
 		module.content = result.outputText
 		if (result.sourceMapText) {
-			var map = JSON.parse(result.sourceMapText)
-			for (var i = 0; i < map.sources.length; i++) {
+			const map = JSON.parse(result.sourceMapText)
+			for (let i = 0; i < map.sources.length; i++) {
 				map.sources[i] = module.resolve(map.sources[i])
 			}
 			module.applySourceMap(map)

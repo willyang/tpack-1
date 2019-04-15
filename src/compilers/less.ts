@@ -8,8 +8,8 @@ export default class Less extends Compiler implements Processor {
 	get vendorName() { return "less" }
 	init(less: any, options: any, builder: Builder) {
 		less.logger.addListener({
-			debug: (msg: string) => { builder.logger.verbose(msg) },
-			info: (msg: string) => { builder.logger.verbose(msg) },
+			debug: (msg: string) => { builder.logger.debug(msg) },
+			info: (msg: string) => { builder.logger.debug(msg) },
 			warn: (msg: string) => { builder.logger.warning(msg) },
 			error: (msg: string) => { builder.logger.error(msg) }
 		})
@@ -25,8 +25,8 @@ export default class Less extends Compiler implements Processor {
 			if (result.map) {
 				module.applySourceMap(result.map)
 			}
-			for (const dep of result.imports) {
-				module.addDependency(dep, {
+			for (const ref of result.imports) {
+				module.addReference(ref, {
 					source: Less.name,
 					type: "@import"
 				})

@@ -9,7 +9,7 @@ export namespace miscTest {
 		assert.deepStrictEqual(misc.stripBOM("\ufeffg"), "g")
 	}
 
-	export function insertOrderedTest() {
+	export function insertSortedTest() {
 		assert.deepStrictEqual(test([], 1), [1])
 		assert.deepStrictEqual(test([0], 1), [0, 1])
 		assert.deepStrictEqual(test([2], 1), [1, 2])
@@ -19,7 +19,7 @@ export namespace miscTest {
 		assert.deepStrictEqual(test([1, 3, 5], 5), [1, 3, 5, 5])
 
 		function test(array, value) {
-			misc.insertOrdered(array, value, (x, y) => x <= y)
+			misc.insertSorted(array, value, (x, y) => x <= y)
 			return array
 		}
 	}

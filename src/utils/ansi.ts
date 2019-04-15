@@ -90,44 +90,55 @@ export function bold(content: string) {
 }
 
 /** 匹配 ANSI 控制字符的正则表达式 */
-const ansiRegex = /[\u001b\u009b][[\]()#;?]*(?:(?:(?:[a-zA-Z\d]*(?:;[a-zA-Z\d]*)*)?\u0007)|(?:(?:\d{1,4}(?:;\d{0,4})*)?[\dA-PR-TZcf-ntqry=<>~]))/g
+const ansiRegExp = /[\u001b\u009b][[\]()#;?]*(?:(?:(?:[a-zA-Z\d]*(?:;[a-zA-Z\d]*)*)?\u0007)|(?:(?:\d{1,4}(?:;\d{0,4})*)?[\dA-PR-TZcf-ntqry=<>~]))/g
 
 /**
  * 删除所有 ANSI 控制字符
  * @param content 要处理的内容
  */
 export function removeAnsiCodes(content: string) {
-	return content.replace(ansiRegex, "")
+	return content.replace(ansiRegExp, "")
 }
 
 /**
- * 将内容按最大列数拆成多行
+ * 如果内容超过最大宽度，则拆成新行
  * @param content 要处理的内容
  * @param indent 新行的缩进空格数
- * @param columns 布局的最大列数
+ * @param maxWidth 允许布局的最大宽度（一般地，西文字母宽度为 1，中文文字宽度为 2）
+ * @returns 返回一个数组，每项各代表一行的内容
  */
-export function splitString(content: string, indent = 0, columns = process.stdout.columns || Infinity) {
-	const result: string[] = []
+export function splitString(content: string, indent = 0, maxWidth = process.stdout.columns || Infinity) {
+	const lines: string[] = []
 	let left = 0
-	let currentWidth = 0
 	let leftBound = 0
+	let currentWidth = 0
 	for (let i = 0; i < content.length;) {
-		// 控制字符
+		// 跳过 ANSI 控制字符
 		const ch = content.charCodeAt(i)
 		if (ch === 0x001b || ch === 0x009b) {
-			const match = new RegExp(`^${ansiRegex.source}`).exec(content.substring(i))
+			const match = new RegExp(`^${ansiRegExp.source}`).exec(content.slice(i))
 			if (match) {
 				leftBound = i += match[0].length
 				continue
 			}
 		}
+		// 跳过换行符
+		if (ch === 10 || ch === 13) {
+			if (left < i) lines.push(`${lines.length ? " ".repeat(indent) : ""}${content.slice(left, i)}`)
+			if (ch === 13 && content.charCodeAt(i + 1) === 10) i++
+			leftBound = left = ++i
+			currentWidth = indent
+			continue
+		}
 		// 排版当前字符
-		if ((currentWidth += getCharWidth(ch)) < columns) {
+		if ((currentWidth += getCharWidth(ch)) < maxWidth) {
 			i++
 			continue
 		}
 		// 达到边界
+		let skipSpace = false
 		if (i === leftBound) {
+			// 列宽太小已不能容纳一个字符，强制布局一个字符
 			i++
 		} else {
 			// 尽量在空格处断词，计算实际截断的位置
@@ -135,66 +146,67 @@ export function splitString(content: string, indent = 0, columns = process.stdou
 			while (i > leftBound && content.charCodeAt(i) !== 32 /* */) {
 				i--
 			}
+			// 找不到空格，强制拆分最后一个字符
 			if (i === leftBound) {
 				i = rightBound
+			} else {
+				skipSpace = true
 			}
 		}
-		const line = content.substring(left, i).trim()
-		line && result.push((result.length ? " ".repeat(indent) : "") + line)
-		// 忽略单词后的空格
-		while (i < content.length && content.charCodeAt(i) === 32 /* */) {
+		lines.push(`${lines.length ? " ".repeat(indent) : ""}${content.slice(left, i)}`)
+		// 跳过空格
+		if (skipSpace) {
 			i++
 		}
 		leftBound = left = i
 		currentWidth = indent
 	}
-	const line = content.substring(left, content.length).trim()
-	line && result.push((result.length ? " ".repeat(indent) : "") + line)
-	return result
+	if (left < content.length) lines.push(`${lines.length ? " ".repeat(indent) : ""}${content.slice(left, content.length)}`)
+	return lines
 }
 
 /**
- * 如果内容显示宽度超过最大值，则将中间部分替换为省略号
- * @param content 要处理的内容
- * @param columns 布局的最大列数
+ * 如果内容超过最大宽度，则将中间部分替换为省略号
+ * @param content 要处理的内容（不支持换行）
  * @param ellipsis 使用的省略号
+ * @param maxWidth 允许布局的最大宽度（一般地，西文字母宽度为 1，中文文字宽度为 2）
  */
-export function ellipsisString(content: string, columns = process.stdout.columns || Infinity, ellipsis = "...") {
+export function truncateString(content: string, ellipsis = "...", maxWidth = process.stdout.columns || Infinity) {
 	// 删除省略号本身的宽度
-	const ellipsisColumns = getStringWidth(ellipsis)
-	if (columns <= ellipsisColumns) {
-		ellipsis = ellipsis.substr(0, columns - 1)
+	const ellipsisWidth = getStringWidth(ellipsis)
+	if (maxWidth <= ellipsisWidth) {
+		ellipsis = ellipsis.substr(0, maxWidth - 1)
 	}
-	columns -= ellipsisColumns
+	maxWidth -= ellipsisWidth
 	// 统计所有控制符的位置，删除时保留所有控制符
-	const controls: number[] = []; // [开始位置1, 结束位置1, 开始位置2, ...]
-	content.replace(ansiRegex, (all: string, index: number) => {
-		controls.push(index, index + all.length - 1)
+	const ansiChars: number[] = []; // [开始位置1, 结束位置1, 开始位置2, ...]
+	content.replace(ansiRegExp, (source: string, index: number) => {
+		ansiChars.push(index, index + source.length - 1)
 		return ""
 	})
 	// 左右逐字排版，超出宽度限制后停止
 	let left = 0
 	let right = content.length - 1
 	let controlLeft = 0
-	let controlRight = controls.length - 1
+	let controlRight = ansiChars.length - 1
 	while (left < right) {
 		// 排版左边一个字符
-		while (controlLeft < controls.length && controls[controlLeft] === left) {
-			left = controls[controlLeft + 1] + 1
+		while (controlLeft < ansiChars.length && ansiChars[controlLeft] === left) {
+			left = ansiChars[controlLeft + 1] + 1
 			controlLeft += 2
 		}
-		columns -= getCharWidth(content.charCodeAt(left))
-		if (columns <= 0) {
+		maxWidth -= getCharWidth(content.charCodeAt(left))
+		if (maxWidth <= 0) {
 			break
 		}
 		left++
 		// 排版右边一个字符
-		while (controlRight >= 0 && controls[controlRight] === right) {
-			right = controls[controlRight - 1] - 1
+		while (controlRight >= 0 && ansiChars[controlRight] === right) {
+			right = ansiChars[controlRight - 1] - 1
 			controlRight -= 2
 		}
-		columns -= getCharWidth(content.charCodeAt(right))
-		if (columns <= 0) {
+		maxWidth -= getCharWidth(content.charCodeAt(right))
+		if (maxWidth <= 0) {
 			break
 		}
 		right--
@@ -204,29 +216,29 @@ export function ellipsisString(content: string, columns = process.stdout.columns
 		return content
 	}
 	// 保留被截断的控制符
-	let controlStrings = ""
+	let ansiString = ""
 	for (; controlLeft < controlRight; controlLeft += 2) {
-		controlStrings += content.substring(controls[controlLeft], controls[controlLeft + 1] + 1)
+		ansiString += content.substring(ansiChars[controlLeft], ansiChars[controlLeft + 1] + 1)
 	}
 	// 截断并排版
-	return `${content.substr(0, left)}${controlStrings}${ellipsis}${content.substr(right + 1)}`
+	return `${content.substr(0, left)}${ansiString}${ellipsis}${content.substr(right + 1)}`
 }
 
 /**
  * 格式化一个列表
  * @param items 所有列表项
  * @param space 列表每项之间间隔的空格数
- * @param columns 布局的最大列数
+ * @param maxWidth 允许布局的最大宽度（一般地，西文字母宽度为 1，中文文字宽度为 2）
  */
-export function formatList(items: string[], space = 2, columns = process.stdout.columns || Infinity) {
+export function formatList(items: string[], space = 2, maxWidth = process.stdout.columns || Infinity) {
 	if (!items.length) {
 		return ""
 	}
-	const itemColumns = items.reduce((prev, next) => Math.max(prev, getStringWidth(next)), 0) + space
-	const maxCount = Math.ceil(columns / itemColumns) || 1
+	const itemWidth = items.reduce((prev, next) => Math.max(prev, getStringWidth(next)), 0) + space
+	const maxCount = Math.ceil(maxWidth / itemWidth) || 1
 	let result = items[0]
 	for (let i = 1; i < items.length; i++) {
-		result += i % maxCount === 0 ? "\n" : " ".repeat(itemColumns - getStringWidth(items[i - 1]))
+		result += i % maxCount === 0 ? "\n" : " ".repeat(itemWidth - getStringWidth(items[i - 1]))
 		result += items[i]
 	}
 	return result
@@ -234,13 +246,14 @@ export function formatList(items: string[], space = 2, columns = process.stdout.
 
 /**
  * 格式化一个表格
- * @param rows 所有行数据
+ * @param rows 所有行组成的数组，数组的每一项是当前行所有列组成的数组
  * @param columnsAlign 指示每列的对齐方式
- * @param headerSeperator 首行分隔符
- * @param columnSeperator 每列之间的间隔
- * @param columns 布局的最大列数
+ * @param headerSeperator 用于区分首行的分隔符
+ * @param columnSeperator 每列之间的分隔符
+ * @param ellipsis 如果表格总宽不够则压缩内容，压缩使用的省略号
+ * @param maxWidth 允许布局的最大宽度（一般地，西文字母宽度为 1，中文文字宽度为 2）
  */
-export function formatTable(rows: string[][], columnsAlign?: ("left" | "center" | "right")[], columnSeperator = "  ", headerSeperator = "", ellipsis = "...", columns = process.stdout.columns || Infinity) {
+export function formatTable(rows: string[][], columnsAlign?: ("left" | "center" | "right")[], columnSeperator = "  ", headerSeperator = "", ellipsis = "...", maxWidth = process.stdout.columns || Infinity) {
 	// 计算列宽
 	const columnsWidth: number[] = []
 	for (const row of rows) {
@@ -252,9 +265,9 @@ export function formatTable(rows: string[][], columnsAlign?: ("left" | "center" 
 		return ""
 	}
 	// 如果列超出则重新分配
-	if (Number.isFinite(columns)) {
+	if (Number.isFinite(maxWidth)) {
 		const seperatorWidth = getStringWidth(columnSeperator)
-		let delta = (columnsWidth.length === 1 ? columnsWidth[0] : columnsWidth.reduce((x, y) => x + seperatorWidth + y)) - columns
+		let delta = (columnsWidth.length === 1 ? columnsWidth[0] : columnsWidth.reduce((x, y) => x + seperatorWidth + y)) - maxWidth
 		if (delta >= 0) {
 			for (let i = columnsWidth.length - 1; i >= 0; i--) {
 				if (columnsWidth[i] > delta) {
@@ -281,7 +294,7 @@ export function formatTable(rows: string[][], columnsAlign?: ("left" | "center" 
 			let cell = row[j]
 			let actualWidth = getStringWidth(cell)
 			if (actualWidth > columnWidth) {
-				cell = ellipsisString(cell, columnWidth, ellipsis)
+				cell = truncateString(cell, ellipsis, columnWidth)
 				actualWidth = columnWidth
 			}
 			switch (columnsAlign && columnsAlign[j]) {
@@ -315,21 +328,21 @@ export function formatTable(rows: string[][], columnsAlign?: ("left" | "center" 
 }
 
 /**
- * 格式化指定的代码片段
- * @param content 要格式化的内容
+ * 格式化一个代码片段
+ * @param content 要格式化的内容（不支持 ANSI 控制字符）
  * @param line 开始行号（从 0 开始）
  * @param column 开始列号（从 0 开始）
  * @param endLine 结束行号（从 0 开始）
  * @param endColumn 结束列号（从 0 开始）
- * @param columns 布局的最大列数
- * @param rows 布局的最大行数，如果等于 0 则显示所有行
  * @param showLine 是否显示行号
  * @param showColumn 是否显示列指示器
  * @param tab 用于代替 TAB 的字符串
+ * @param maxWidth 允许布局的最大宽度（一般地，西文字母宽度为 1，中文文字宽度为 2）
+ * @param maxHeight 允许布局的最大行数，如果等于 0 则显示所有行
  */
-export function formatCodeFrame(content: string, line?: number, column?: number, endLine?: number, endColumn?: number, columns = process.stdout.columns || Infinity, rows = 3, showLine = true, showColumn = true, tab?: string) {
+export function formatCodeFrame(content: string, line?: number, column?: number, endLine?: number, endColumn?: number, showLine = true, showColumn = true, tab = "    ", maxWidth = process.stdout.columns || Infinity, maxHeight = 3) {
 	// 计算要显示的开始行号
-	const firstLine = rows > 0 ? Math.max(0, (line || 0) - Math.floor((rows - 1) / 2)) : 0
+	const firstLine = maxHeight > 0 ? Math.max(0, (line || 0) - Math.floor((maxHeight - 1) / 2)) : 0
 	// 存储所有行的数据
 	const lines: string[] = []
 	// 提取要显示的行的数据
@@ -341,7 +354,7 @@ export function formatCodeFrame(content: string, line?: number, column?: number,
 			if (lineNumber >= firstLine) {
 				// 保存当前行的数据
 				lines.push(content.substring(lastIndex, i))
-				if (rows > 0 && lines.length >= rows) {
+				if (maxHeight > 0 && lines.length >= maxHeight) {
 					break
 				}
 			}
@@ -355,13 +368,13 @@ export function formatCodeFrame(content: string, line?: number, column?: number,
 	}
 	// 用于显示行号的宽度
 	const lineNumberWidth = showLine ? (lineNumber + 1).toString().length : 0
-	columns -= lineNumberWidth + " >  | ".length + 1
+	maxWidth -= lineNumberWidth + " >  | ".length + 1
 	// 计算要显示的开始列号
 	let firstColumn = 0
 	const selectedLine = lines[line! - firstLine]
 	if (selectedLine != undefined && column != undefined) {
 		// 确保 firstColumn 和 startColumn 之间的距离 < columns / 2
-		let leftWidth = Math.floor(columns / 2)
+		let leftWidth = Math.floor(maxWidth / 2)
 		for (firstColumn = Math.min(column, selectedLine.length - 1); firstColumn > 0 && leftWidth > 0; firstColumn--) {
 			leftWidth -= getCharWidth(selectedLine.charCodeAt(firstColumn))
 		}
@@ -396,12 +409,12 @@ export function formatCodeFrame(content: string, line?: number, column?: number,
 			}
 			// 超出宽度后停止
 			const ch = currentLine.charCodeAt(j)
-			if (ch !== ch /*NaN*/ || (currentWidth += getCharWidth(ch)) > columns) {
+			if (ch !== ch /*NaN*/ || (currentWidth += getCharWidth(ch)) > maxWidth) {
 				break
 			}
 			// 将 TAB 转为空格
 			if (ch === 9 /*\t*/) {
-				result += tab || "    "
+				result += tab
 				continue
 			}
 			// 转换控制字符
@@ -431,7 +444,7 @@ export function formatCodeFrame(content: string, line?: number, column?: number,
  */
 export function ansiToHTML(content: string, colors?: { [key: string]: string }, context: { [key: string]: string } = {}) {
 	let currentStyle = ""
-	content = content.replace(ansiRegex, all => {
+	content = content.replace(ansiRegExp, all => {
 		if (all.startsWith("\u001b[") && all.endsWith("m")) {
 			// 自定义颜色
 			const match = /^\u001b\[([34])8;(?:5;(\d+)|2;(\d+);(\d+);(\d+))/.exec(all)

@@ -1,5 +1,5 @@
 import { SourceMapData, toSourceMapBuilder, toSourceMapObject, toSourceMapString } from "../utils/sourceMap"
-import { getExt, setExt, getDir, setDir, appendFileName, prependFileName, getFileName, setFileName, resolvePath } from "../utils/path"
+import { getExt, setExt, getDir, setDir, appendFileName, prependFileName, getFileName, setFileName, resolvePath, relativePath } from "../utils/path"
 import { indexToLineColumn } from "../utils/lineColumn"
 import { LogEntry } from "./logger"
 import { Bundler } from "./builder"
@@ -43,11 +43,13 @@ export class Module {
 	/** 获取或设置模块的生成时间戳 */
 	emitTime?: number
 
-	/** 重置模块的状态 */
+	/**
+	 * 重置模块的状态
+	 */
 	reset() {
-		if (this.state !== ModuleState.deleted) this.state = ModuleState.initial
+		this.state = this.state === ModuleState.deleting ? ModuleState.deleted : ModuleState.initial
 		this.path = this.originalPath
-		this.warnings = this.errors = this.sourceMap = this.sourceMapPath = this.data = this.noEmit = this.emitTime = this.bundler = this.type = undefined
+		this.warnings = this.errors = this.sourceMap = this.sourceMapPath = this.data = this.emitTime = this.noEmit = this.bundler = this.type = undefined
 		this.reportedWarningCount = this.reportedErrorCount = 0
 		if (this.props) this.props.clear()
 		if (this.dependencies) this.dependencies.length = 0
@@ -90,12 +92,20 @@ export class Module {
 		this.path = appendFileName(this.path, value)
 	}
 
-	/** 
-	 * 解析当前文件的相对路径为绝对路径
+	/**
+	 * 解析相对于当前文件的源路径为绝对路径
 	 * @param path 要解析的相对路径
 	 */
 	resolve(path: string) {
 		return resolvePath(this.originalPath, "..", path)
+	}
+
+	/**
+	 * 获取基于当前文件最终路径的相对路径
+	 * @param path 要解析的绝对路径
+	 */
+	relative(path: string) {
+		return relativePath(getDir(this.path), path)
 	}
 
 	// #endregion
@@ -238,7 +248,7 @@ export class Module {
 		if (typeof log === "string") {
 			log = { message: log }
 		} else if (log instanceof Error) {
-			log = { message: log.message, error: log, printErrorStack: true }
+			log = { message: log.message, error: log, showErrorStack: true }
 		} else {
 			log = { ...log }
 		}
@@ -247,8 +257,8 @@ export class Module {
 			log.fileName = this.originalPath
 		}
 		// 保存当前模块内容
-		if (log.content == undefined && typeof this.data === "string") {
-			log.content = this.data
+		if (log.content == undefined && this.data != undefined && (log.line != undefined || log.index != undefined)) {
+			log.content = this.content
 		}
 		// 计算行列号
 		if (log.content != undefined && log.line == undefined && log.index != undefined) {
@@ -359,8 +369,9 @@ export class Module {
 	/**
 	 * 添加一个引用，引用发生改变后当前模块需要重新加载
 	 * @param target 依赖的目标模块绝对路径
+	 * @param options 引用的附加信息
 	 */
-	addReference(target: string) {
+	addReference(target: string, options?: any) {
 		const references = this.references || (this.references = new Set())
 		references.add(target)
 	}
@@ -379,7 +390,7 @@ export class Module {
 	 */
 	addSibling(path: string, data: string | Buffer) {
 		const module = new Module(path, false)
-		module.state = ModuleState.emitting
+		module.state = ModuleState.loaded
 		module.data = data
 		const siblings = this.siblings || (this.siblings = [])
 		siblings.push(module)
@@ -426,22 +437,22 @@ export class Module {
 export const enum ModuleState {
 	/** 初始状态 */
 	initial = 0,
-	/** 模块已修改 */
-	changed = 1 << 0,
-	/** 模块已删除 */
-	deleted = 1 << 1,
+	/** 模块已被删除 */
+	deleted = 1 << 0,
+	/** 模块正在创建 */
+	creating = 1 << 1,
+	/** 模块正在修改 */
+	changing = 1 << 2,
+	/** 模块正在删除 */
+	deleting = 1 << 3,
 	/** 模块正在加载 */
-	loading = 1 << 2,
+	loading = 1 << 4,
 	/** 模块已加载 */
-	loaded = 1 << 3,
+	loaded = 1 << 5,
 	/** 模块正在生成 */
-	emitting = 1 << 4,
+	emitting = 1 << 6,
 	/** 模块已生成 */
-	emitted = 1 << 5,
-	/** 模块已被更新 */
-	updated = changed | deleted,
-	/** 模块正在处理 */
-	processing = loading | emitting,
+	emitted = 1 << 7,
 }
 
 /** 表示一个模块的日志 */
