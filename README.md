@@ -9,17 +9,17 @@
 
 ## 特性
 
-### 1. 一切都是入口！更利于多页场景
+### 1. 一切都是入口！专为多页场景设计
 - 打包从 `src` 到 `dist` 文件夹，任何格式都可依赖分析
-- 以 HTML 为入口，更适合活动推广页、组件库文档和多页 WebAPP
+- 以 HTML 为入口，更适合活动推广页、组件库和多页 WebAPP
 
-### 2. 开箱即用
+### 2. 零配置秒启
 - 零配置启动现有项目：自动打包、支持热更新（HMR, Hot Module Replacement）
 - 开发服务秒开，项目再大也不卡
 
-### 3. 可深度定制
+### 3. 可深度定制，配置简单
 - 插件化打包配置；内置 JSX/TS/Less/Sass/Stylus 等热门插件
-- 可自定义任务，比如用于生成模拟（Mock）数据
+- 可扩展自定义命令，集成所有开发服务，比如生成模拟（Mock）数据
 
 ### 4. 更多现代项目所需功能
 - [公共模块拆分（Common Chunk Split）](https://github.com/tpack/tpack/wiki/公共模块拆分)
@@ -58,7 +58,7 @@ tpack -s 8086
 
 > 如果启动失败，[请点击这里](https://github.com/tpack/tpack/wiki/常见问题#启动失败)
 
-然后在浏览器打开 http://localhost:8086/index.html, TPack 会为你自动安装依赖并编译代码。
+然后在浏览器打开 http://localhost:8086/index.html, TPack 会自动为你安装依赖并编译代码。
 
 在 HTML 中引入 JavaScript、CSS 和图片；
 在 JavaScript 中使用 ES6 `import` 引入更多的模块；
@@ -66,7 +66,7 @@ tpack -s 8086
 ——TPack 都会跟随着依赖去构建整个项目。
 
 ### 发布
-开发完成后，执行以下命令即可压缩、优化代码并生成 `dist` 目录，用于发布上线
+开发完成后，执行以下命令即可压缩、优化代码并生成 `dist` 目录，用于发布上线：
 ```bash
 tpack -p
 ```
@@ -95,12 +95,14 @@ export default {
 
 	bundler: { // 配置怎么打包依赖
 		resolver: { // 配置怎么解析 import "react" 中的路径
-			modules: ["./src/components", "node_modules"] // import "x" 时，"x" 从 src/components 和 node_modules 搜索
+			modules: ["./src/components", "node_modules"] // import "button" 时，"button" 从 src/components 和 node_modules 搜索
 		},
 		externalModules: [ // node_modules 的外部资源需要拷贝到项目里，或者内联
-			{ match: "*.{png|jpg|gif|svg|wbmp|bmp|ico|jpe|jpeg|cur|webp|jfif}", minSize: 2048, outPath: "assets/images/<name><ext>" },
-			{ match: "*.{eot|ttf|tif|tiff|woff|woff2}", minSize: 2048, outPath: "assets/fonts/<name><ext>" },
-			{ minSize: 2048, outPath: "assets/resources/<name><ext>" }
+			{ match: "*.{png,jpg,gif,svg,wbmp,bmp,ico,jpe,jpeg,cur,webp,jfif}", minSize: 2048, outPath: "assets/images/<path>" },
+			{ match: "*.{eot,ttf,tif,tiff,woff,woff2}", minSize: 2048, outPath: "assets/fonts/<path>" },
+			{ match: "*.{mp3,ogg,wav,aac,mid}", minSize: 2048, outPath: "assets/audios/<path>" },
+			{ match: "*.{mp4,webm,mpg,mpeg,avi,3gpp,flv}", minSize: 2048, outPath: "assets/videos/<path>" },
+			{ minSize: 2048, outPath: "assets/resources/<path>" }
 		],
 		
 		js: {
@@ -131,7 +133,7 @@ export default {
 		{ match: ["*.js", "!*.min.js"], use: "tpack/optimizers/js" }, // 压缩 js
 		{ match: ["*.css", "!**/node_modules/**"], use: "tpack/compilers/autoprefixer" }, // css 自动添加后缀
 		{ match: ["*.css", "!*.min.css"], use: "tpack/optimizers/css" }, // 压缩 css
-		{ match: "*.{html,htm}", use: "tpack/optimizers/html" } // 压缩 html
+		{ match: "assets/**", outPath: "assets/<dir>/<name>.<md5><ext>" } // 添加后缀
 	],
 
 	sourceMap: true, // 生成 Source Map，方便调试

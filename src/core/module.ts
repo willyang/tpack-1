@@ -37,7 +37,7 @@ export class Module {
 	/** 获取或设置当前模块关联的打包器 */
 	bundler?: Bundler | false
 
-	/** 判断或设置是否跳过保存当前模块 */
+	/** 判断或设置是否跳过生成当前模块 */
 	noEmit?: boolean
 
 	/** 获取或设置模块的生成时间戳 */
@@ -49,7 +49,7 @@ export class Module {
 	reset() {
 		this.state = this.state === ModuleState.deleting ? ModuleState.deleted : ModuleState.initial
 		this.path = this.originalPath
-		this.warnings = this.errors = this.sourceMap = this.sourceMapPath = this.data = this.emitTime = this.noEmit = this.bundler = this.type = undefined
+		this.warnings = this.errors = this.sourceMap = this.data = this.emitTime = this.noEmit = this.bundler = this.type = undefined
 		this.reportedWarningCount = this.reportedErrorCount = 0
 		if (this.props) this.props.clear()
 		if (this.dependencies) this.dependencies.length = 0
@@ -96,7 +96,7 @@ export class Module {
 	 * 解析相对于当前文件的源路径为绝对路径
 	 * @param path 要解析的相对路径
 	 */
-	resolve(path: string) {
+	resolvePath(path: string) {
 		return resolvePath(this.originalPath, "..", path)
 	}
 
@@ -104,7 +104,7 @@ export class Module {
 	 * 获取基于当前文件最终路径的相对路径
 	 * @param path 要解析的绝对路径
 	 */
-	relative(path: string) {
+	relativePath(path: string) {
 		return relativePath(getDir(this.path), path)
 	}
 
@@ -136,8 +136,8 @@ export class Module {
 
 	// #region 源映射
 
-	/** 获取或设置当前源映射（Source Map）的最终保存绝对路径 */
-	sourceMapPath?: string
+	/** 判断当前模块是否需要生成源映射（Source Map）*/
+	generatesSourceMap?: boolean
 
 	/** 获取或设置当前模块关联的源映射（Source Map）*/
 	sourceMap?: SourceMapData
@@ -195,7 +195,7 @@ export class Module {
 	 * 删除指定的自定义属性
 	 * @param key 属性名
 	 */
-	removeProp(key: any, value: any) {
+	removeProp(key: any) {
 		this.props && this.props.delete(key)
 	}
 
@@ -346,15 +346,34 @@ export class Module {
 
 	/**
 	 * 添加一个依赖项
-	 * @param name 依赖的模块名
 	 * @param options 依赖的选项
 	 */
-	addDependency(name: string, options?: Partial<Dependency>) {
-		options = { name, ...options }
+	addDependency(options?: Dependency) {
+		options = { ...options }
+		let url = options.url
+		if (url != undefined) {
+			const hashIndex = url.indexOf("#")
+			if (hashIndex >= 0) {
+				if (options.hash === undefined) {
+					options.hash = url.slice(hashIndex + 1)
+				}
+				url = url.slice(0, hashIndex)
+			}
+			const queryIndex = url.indexOf("?")
+			if (queryIndex >= 0) {
+				if (options.query === undefined) {
+					options.query = url.slice(queryIndex + 1)
+				}
+				url = url.slice(0, queryIndex)
+			}
+			if (options.name === undefined) {
+				options.name = url
+			}
+		}
 		if (this.dependencies) {
-			this.dependencies.push(options as Dependency)
+			this.dependencies.push(options)
 		} else {
-			this.dependencies = [options as Dependency]
+			this.dependencies = [options]
 		}
 		return options
 	}
@@ -383,18 +402,28 @@ export class Module {
 	/** 获取当前模块的兄弟模块 */
 	siblings?: Module[]
 
+	/** 如果当前模块是兄弟模块则获取源模块 */
+	sourceModule?: Module
+
 	/**
 	 * 添加一个兄弟模块，兄弟模块会随当前模块一起保存
 	 * @param path 要添加的兄弟模块绝对路径
 	 * @param data 要添加的兄弟模块数据
+	 * @param type 要添加的兄弟模块的 MIME 类型
 	 */
-	addSibling(path: string, data: string | Buffer) {
-		const module = new Module(path, false)
-		module.state = ModuleState.loaded
-		module.data = data
+	addSibling(path: string, data: string | Buffer, type?: string): Module {
+		// 展开兄弟模块
+		if (this.sourceModule) {
+			return this.sourceModule.addSibling(path, data, type)
+		}
+		const sibling = new Module(path, false)
+		sibling.sourceModule = this
+		Object.defineProperty(sibling, "state", { get(this: Module) { return this.sourceModule!.state } })
+		sibling.data = data
+		if (type) sibling.type = type
 		const siblings = this.siblings || (this.siblings = [])
-		siblings.push(module)
-		return module
+		siblings.push(sibling)
+		return sibling
 	}
 
 	// #endregion
@@ -426,6 +455,28 @@ export class Module {
 		module.parentData = module.data
 		module.parentSourceMap = module.sourceMap
 		module.parentIndex = index
+		return module
+	}
+
+	/** 创建当前模块对象的副本 */
+	clone() {
+		const module = new Module(this.originalPath, this.isEntryModule)
+		this.state = module.state
+		this.path = module.path
+		this.type = module.type
+		this.bundler = module.bundler
+		this.noEmit = module.noEmit
+		this.emitTime = module.emitTime
+		this.data = module.data
+		this.sourceMap = module.sourceMap
+		this.reportedErrorCount = module.reportedErrorCount
+		this.reportedWarningCount = module.reportedWarningCount
+		if (module.props) this.props = new Map(module.props.entries())
+		if (module.errors) this.errors = module.errors.slice(0)
+		if (module.warnings) this.warnings = module.warnings.slice(0)
+		if (module.dependencies) this.dependencies = module.dependencies.slice(0)
+		if (module.references) this.references = new Set(module.references)
+		if (module.siblings) this.siblings = module.siblings.slice(0)
 		return module
 	}
 
@@ -471,8 +522,14 @@ export interface ModuleLogEntry extends LogEntry {
 
 /** 表示一个模块依赖项 */
 export interface Dependency {
+	/** 依赖的原始地址 */
+	url?: string
 	/** 依赖的模块名，模块名将被继续解析成绝对路径 */
-	name: string
+	name?: string
+	/** 依赖地址的查询参数部分 */
+	query?: string
+	/** 依赖地址的哈希值部分 */
+	hash?: string
 	/** 是否是动态导入 */
 	dynamic?: boolean
 	/** 是否是可选导入，可选导入如果解析失败则只警告 */

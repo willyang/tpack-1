@@ -24,6 +24,19 @@ export namespace miscTest {
 		}
 	}
 
+	export async function deferTest() {
+		let value = 0
+		await new Promise(resolve => {
+			const func = misc.defer(() => {
+				value++
+				resolve()
+			}, 2)
+			func()
+			func()
+		})
+		assert.strictEqual(value, 1)
+	}
+
 	export function escapeRegExpTest() {
 		assert.strictEqual(new RegExp(misc.escapeRegExp("\\s")).source, /\\s/.source)
 	}

@@ -20,18 +20,18 @@ export function decodeBase64(value: string) {
  * 获取指定数据的 Data URI
  * @param mimeType 数据的 MIME 类型
  * @param data 要编码的字符串或二进制数据
- * @example encodeDataUri("text/javascript", "A") // "data:text/javascript;base64,QQ=="
+ * @example encodeDataURI("text/javascript", "A") // "data:text/javascript;base64,QQ=="
  */
-export function encodeDataUri(mimeType: string, data: string | Buffer) {
+export function encodeDataURI(mimeType: string, data: string | Buffer) {
 	return `data:${mimeType};base64,${encodeBase64(data)}`
 }
 
 /**
  * 解码指定的 Data URI，如果解码失败则返回空
  * @param value 要解码的 data 地址
- * @example decodeDataUri("data:text/javascript;base64,QQ==") // {mimeType: "text/javascript", data: Buffer.from("A")}
+ * @example decodeDataURI("data:text/javascript;base64,QQ==") // {mimeType: "text/javascript", data: Buffer.from("A")}
  */
-export function decodeDataUri(value: string) {
+export function decodeDataURI(value: string) {
 	const match = /^data:([^;]*);([^,]*),/.exec(value)
 	return match ? {
 		mimeType: match[1],

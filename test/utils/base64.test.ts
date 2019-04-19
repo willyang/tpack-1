@@ -12,15 +12,15 @@ export namespace base64Test {
 		assert.strictEqual(base64.decodeBase64("Zm9v"), "foo")
 	}
 
-	export function encodeDataUriTest() {
-		assert.strictEqual(base64.encodeDataUri("text/javascript", "foo"), "data:text/javascript;base64,Zm9v")
-		assert.strictEqual(base64.encodeDataUri("text/javascript", Buffer.from("foo")), "data:text/javascript;base64,Zm9v")
+	export function encodeDataURITest() {
+		assert.strictEqual(base64.encodeDataURI("text/javascript", "foo"), "data:text/javascript;base64,Zm9v")
+		assert.strictEqual(base64.encodeDataURI("text/javascript", Buffer.from("foo")), "data:text/javascript;base64,Zm9v")
 	}
 
-	export function decodeDataUriTest() {
-		assert.strictEqual(base64.decodeDataUri("data:text/javascript;base64,Zm9v")!.mimeType, "text/javascript")
-		assert.strictEqual(base64.decodeDataUri("data:text/javascript;base64,Zm9v")!.data.toString(), "foo")
-		assert.strictEqual(base64.decodeDataUri("data:text/javascript;base64"), null)
+	export function decodeDataURITest() {
+		assert.strictEqual(base64.decodeDataURI("data:text/javascript;base64,Zm9v")!.mimeType, "text/javascript")
+		assert.strictEqual(base64.decodeDataURI("data:text/javascript;base64,Zm9v")!.data.toString(), "foo")
+		assert.strictEqual(base64.decodeDataURI("data:text/javascript;base64"), null)
 	}
 
 }

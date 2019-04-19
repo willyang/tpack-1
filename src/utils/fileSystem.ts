@@ -11,7 +11,7 @@ export class FileSystem {
 	readonly isCaseInsensitive = isCaseInsensitive
 
 	/**
-	 * 获取文件或文件夹的属性，如果是链接则返回链接实际引用的文件属性
+	 * 获取文件或文件夹的属性，如果是文件链接则返回链接实际引用的文件属性
 	 * @param path 要获取的路径
 	 */
 	getStat(path: string) {
@@ -27,7 +27,7 @@ export class FileSystem {
 	}
 
 	/**
-	 * 获取文件或文件夹的属性，如果是链接则返回链接本身的文件属性
+	 * 获取文件或文件夹的属性，如果是文件链接则返回链接本身的文件属性
 	 * @param path 要获取的路径
 	 */
 	getLinkStat(path: string) {

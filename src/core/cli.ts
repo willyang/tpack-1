@@ -186,7 +186,7 @@ export const extensions: { [ext: string]: string } = {
  * @param path 要载入的配置文件名
  * @param jsModule 是否支持 JS 文件中的 ES Module 语法
  */
-export function loadConfigFile(path: string, jsModule = true) {
+export async function loadConfigFile(path: string, jsModule = true) {
 	path = resolve(path)
 	const ext = extname(path).toLowerCase()
 	const originalLoader = require.extensions[ext]

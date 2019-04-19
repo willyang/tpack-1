@@ -9,14 +9,11 @@ export function build() {
 	return {
 		rootDir: ".",
 		outDir: "dist",
-		match: ["./src", "!./src/tsconfig.json", "./locales", "./configs", "./package.json", "./README.md", "./LICENSE"],
+		match: ["./src", "!./src/tsconfig.json", "./locales", "./configs", "./data", "./package.json", "./README.md", "./LICENSE"],
 		compilers: [
-			{ match: "src/**/*", outPath: "<path>" },
 			{
-				match: "*.ts",
-				process(module) {
-					module.content = module.content.replace(/\.\.\/(\.\.\/|package)/g, "$1")
-				}
+				match: "src/**/*",
+				outPath: "<path>"
 			},
 			{
 				match: "./package.json",
@@ -26,8 +23,14 @@ export function build() {
 			},
 			{
 				match: "*.ts",
-				use: "./src/compilers/typescript",
-				options: { path: "./tsconfig.json", noTypeCheck: true, declaration: true, target: "es2018", module: "commonjs" }
+				use: [{
+					process(module) {
+						module.content = module.content.replace(/\.\.\/(\.\.\/|package)/g, "$1")
+					}
+				}, {
+					use: "./src/compilers/typescript",
+					options: { path: "./tsconfig.json", noTypeCheck: true, declaration: true, target: "es2018", module: "commonjs" }
+				}]
 			},
 		],
 		bundler: {

@@ -481,7 +481,7 @@ export class SourceMapBuilder implements SourceMapGenerator {
 /** 表示源映射中的一个映射点 */
 export interface Mapping {
 	/** 生成文件中的列号（从 0 开始）*/
-	readonly generatedColumn: number
+	generatedColumn: number
 	/** 源文件的索引（从 0 开始）*/
 	sourceIndex?: number
 	/** 源文件中的行号（从 0 开始）*/

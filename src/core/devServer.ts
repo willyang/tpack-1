@@ -9,7 +9,7 @@ import { Builder } from "./builder"
 import { i18n } from "./i18n"
 import { Module, ModuleState } from "./module"
 import { createReadStream } from "fs";
-import { containsPath, relativePath, setDir, getDir, normalizePath } from "../utils/path";
+import { containsPath, relativePath, setDir, getDir, normalizePath } from "../utils/path"
 
 /** 表示一个开发服务器 */
 export class DevServer {
@@ -136,7 +136,7 @@ export class DevServer {
 	/** 处理客户端请求 */
 	private _processRequest = async (req: IncomingMessage, res: ServerResponse) => {
 		let { pathname, query } = parse(req.url!)
-		const outPath = join(this.builder.outDir, decodeURIComponent(pathname!))
+		const outPath = join(this.builder.rootDir, decodeURIComponent(pathname!))
 		// 响应已编译的文件
 		try {
 			const module = await this.builder.getEmittedModule(outPath)
@@ -248,7 +248,7 @@ export class DevServer {
 				dirs += `\n\t\t<li><a href="${encodeHTML(name)}">${encodeHTML(name)}/</a></li>`
 				continue
 			}
-			const sourceName = relativePath(getDir(setDir(path, this.builder.rootDir, this.builder.outDir)), module.originalPath)
+			const sourceName = relativePath(getDir(path), module.originalPath)
 			files += `\n\t\t<li><a href="${encodeHTML(name)}">${encodeHTML(name)}</a>${name === sourceName ? "" : `(${sourceName})`}</li>`
 		}
 		res.end(`<!DOCTYPE html>

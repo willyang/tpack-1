@@ -200,6 +200,8 @@ export namespace pathTest {
 		assert.strictEqual(path.setDir("/user/root/foo.txt", "goo", "/user/root"), "goo/foo.txt")
 		assert.strictEqual(path.setDir("/user/root/foo", "goo", "/user/root"), "goo/foo")
 		assert.strictEqual(path.setDir("/user/root/foo", "goo/", "/user/root"), "goo/foo")
+
+		assert.strictEqual(path.setDir("/user/root/foo", "goo/", "/error"), "/user/root/foo")
 	}
 
 	export function getFileNameTest() {
@@ -326,6 +328,13 @@ export namespace pathTest {
 		assert.strictEqual(path.containsPath("goo1/goo2/../../foo", "goo1/goo2/.."), false)
 		assert.strictEqual(path.containsPath("goo1/.", "goo1/.."), false)
 		assert.strictEqual(path.containsPath("goo1/..", "goo1/."), true)
+	}
+
+	export function deepestPathTest() {
+		assert.strictEqual(path.deepestPath("a", "b"), null)
+		assert.strictEqual(path.deepestPath("a", "a/b"), "a/b")
+		assert.strictEqual(path.deepestPath("a/b", "a"), "a/b")
+		assert.strictEqual(path.deepestPath("a/b/c", "a/b/d"), null)
 	}
 
 	export function commonDirTest() {

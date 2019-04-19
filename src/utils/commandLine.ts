@@ -43,3 +43,20 @@ export function hideCursor(stream = process.stdout) {
 interface ExtendedStream {
 	__showCursor__?: () => void
 }
+
+/**
+ * 等待并读取命令行输入
+ * @param message 提示的信息
+ */
+export async function prompt(message: string) {
+	return new Promise(resolve => {
+		const result = (require("readline") as typeof import("readline")).createInterface({
+			input: process.stdin,
+			output: process.stdout
+		})
+		result.question(message, answer => {
+			result.close()
+			resolve(answer)
+		})
+	})
+}

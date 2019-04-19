@@ -19,7 +19,7 @@ export default class TS extends Compiler implements Processor {
 		}
 		options = {
 			compilerOptions: Object.assign({
-				sourceMap: builder.sourceMap,
+				sourceMap: module.generatesSourceMap,
 				charset: builder.encoding,
 				experimentalDecorators: true,
 				newLine: "LF",
@@ -53,7 +53,7 @@ export default class TS extends Compiler implements Processor {
 		if (result.sourceMapText) {
 			const map = JSON.parse(result.sourceMapText)
 			for (let i = 0; i < map.sources.length; i++) {
-				map.sources[i] = module.resolve(map.sources[i])
+				map.sources[i] = module.resolvePath(map.sources[i])
 			}
 			module.applySourceMap(map)
 		}

@@ -3,23 +3,22 @@ import { HTMLBundler, HTMLBundlerOptions } from "../bundlers/html"
 import { JSBundler, JSBundlerOptions } from "../bundlers/js"
 import { color, ConsoleColor } from "../utils/ansi"
 import { AsyncQueue } from "../utils/asyncQueue"
-import { encodeDataUri } from "../utils/base64"
+import { encodeDataURI } from "../utils/base64"
+import { Deferred } from "../utils/deferred"
 import { EventEmitter } from "../utils/eventEmitter"
 import { FileSystem } from "../utils/fileSystem"
 import { Matcher, Pattern, PatternOptions } from "../utils/matcher"
-import { copyToMap, formatDate, formatHRTime, insertSorted } from "../utils/misc"
-import { appendFileName, containsPath, getDir, isAbsolutePath, normalizePath, pathEquals, relativePath, resolvePath, setDir } from "../utils/path"
+import { copyToMap, formatDate, formatHRTime, insertSorted, defer } from "../utils/misc"
+import { appendFileName, containsPath, deepestPath, getDir, isAbsolutePath, normalizePath, pathEquals, relativePath, resolvePath, setDir, getExt } from "../utils/path"
 import { createSourceMappingURLComment, SourceMapObject } from "../utils/sourceMap"
-import { isAbsoluteURL } from "../utils/url"
 import { DevServer, DevServerMode, DevServerOptions } from "./devServer"
 import { i18n } from "./i18n"
 import { Logger, LoggerOptions, LogLevel } from "./logger"
-import { Module, ModuleLogEntry, ModuleState } from "./module"
+import { Dependency, Module, ModuleLogEntry, ModuleState } from "./module"
+import { installPackage, resolveFrom } from "./require"
 import { ResolveContext, Resolver, ResolverOptions } from "./resolver"
 import { Watcher, WatcherOptions } from "./watcher"
-import { installPackage, resolveFrom } from "./require"
-import { Deferred } from "../utils/deferred"
-import { setTimeout } from "timers";
+import { OutputOptions } from "../bundlers/common"
 
 /** 表示一个模块构建器 */
 export class Builder extends EventEmitter {
@@ -67,7 +66,7 @@ export class Builder extends EventEmitter {
 		}
 		this.encoding = options.encoding || "utf-8"
 		this.noPathCheck = !!options.noPathCheck
-		this.noEmit = !!options.noEmit
+		this.noWrite = !!options.noWrite
 		this.parallel = options.parallel || 1
 		this.fs = options.fs || new FileSystem()
 
@@ -76,8 +75,8 @@ export class Builder extends EventEmitter {
 		this.outDir = resolvePath(baseDir, options.outDir != undefined ? options.outDir : "dist")
 		this.filter = options.filter != undefined ? this.createMatcher(options.filter) : undefined
 
-		this.compilerRoot = resolveProcessorRules.call(this, options.compilers || getDefaultProcessors("../../configs/compilers.json"), "compilers")
-		this.optimizerRoot = options.optimize ? resolveProcessorRules.call(this, options.optimizers || getDefaultProcessors("../../configs/optimizers.json"), "optimizers") : undefined
+		this.compilerRoot = resolveProcessorRules.call(this, options.compilers || getDefaultProcessors("../../data/compilers.json"), "compilers")
+		this.optimizerRoot = options.optimize ? resolveProcessorRules.call(this, options.optimizers || getDefaultProcessors("../../data/optimizers.json"), "optimizers") : undefined
 
 		const bundlerOptions = options.bundler || {}
 		this.resolvers = (Array.isArray(bundlerOptions.resolver) ? bundlerOptions.resolver : bundlerOptions.target === undefined || bundlerOptions.target === "web" ? [{
@@ -97,14 +96,16 @@ export class Builder extends EventEmitter {
 				matcher: resolver.match != undefined || resolver.exclude != undefined ? this.createMatcher(resolver.match || (() => true), resolver.exclude) : undefined,
 				before: resolver.before,
 				after: resolver.after,
-				resolver: resolver.type === "relative" ? undefined : new Resolver(resolver)
+				resolver: resolver.type === "relative" ? undefined : new Resolver(resolver),
+				enforceCaseSensitive: resolver.enforceCaseSensitive !== false
 			}))
-		this.externalModules = (bundlerOptions.externalModules || require("../../configs/externalModules.json") as ExternalModuleRule[]).map(externalModule => ({
+		this.resolvers.push({ enforceCaseSensitive: true })
+		this.externalModules = (bundlerOptions.externalModules || require("../../data/externalModules.json") as ExternalModuleRule[]).map(externalModule => ({
 			matcher: externalModule.match != undefined || externalModule.exclude != undefined ? this.createMatcher(externalModule.match || (() => true), externalModule.exclude) : undefined,
 			matchType: externalModule.matchType,
 			minSize: externalModule.minSize || 0,
 			outPath: typeof externalModule.outPath === "string" ? (module: Module, builder: Builder) => {
-				const originalOutPath = resolvePath(builder.outDir, builder.formatPath(externalModule.outPath as string, module))
+				const originalOutPath = builder.resolvePath(builder.formatPath(externalModule.outPath as string, module))
 				const exists = builder.emittedModules.get(originalOutPath)
 				if (!exists || exists === module) {
 					return originalOutPath
@@ -118,19 +119,6 @@ export class Builder extends EventEmitter {
 				}
 			} : externalModule.outPath
 		}))
-		const outputOptions = bundlerOptions.output
-		this.output = {
-			publicURL: outputOptions ? outputOptions.publicURL : undefined,
-			relativeURL: outputOptions ? outputOptions.relativeURL : undefined,
-			formatURL: outputOptions ? outputOptions.formatURL : undefined,
-			prepend: outputOptions ? typeof outputOptions.prepend === "string" ? (module, builder) => builder.formatPath(outputOptions.prepend as string, module) : outputOptions.prepend : undefined,
-			append: outputOptions ? typeof outputOptions.append === "string" ? (module, builder) => builder.formatPath(outputOptions.append as string, module) : outputOptions.append : undefined,
-			modulePrepend: outputOptions ? typeof outputOptions.modulePrepend === "string" ? (module, _, builder) => builder.formatPath(outputOptions.modulePrepend as string, module) : outputOptions.modulePrepend : undefined,
-			moduleAppend: outputOptions ? typeof outputOptions.moduleAppend === "string" ? (module, _, builder) => builder.formatPath(outputOptions.moduleAppend as string, module) : outputOptions.moduleAppend : undefined,
-			moduleSeperator: outputOptions && outputOptions.moduleSeperator != undefined ? outputOptions.moduleSeperator : "\n\n",
-			indentString: outputOptions && outputOptions.indentString != undefined ? outputOptions.indentString : "  ",
-			newLine: outputOptions && outputOptions.indentString != undefined ? outputOptions.indentString : "\n"
-		}
 
 		for (const key in bundlerOptions.bundlers) {
 			const bundler = bundlerOptions.bundlers[key]
@@ -140,22 +128,23 @@ export class Builder extends EventEmitter {
 			if (!this.bundlers.has(".js")) this.bundlers.set(".js", new JSBundler(bundlerOptions.js, this))
 			if (!this.bundlers.has(".css")) this.bundlers.set(".css", new CSSBundler(bundlerOptions.css, this))
 			if (!this.bundlers.has(".html")) this.bundlers.set(".html", new HTMLBundler(bundlerOptions.html, this))
+			if (!this.bundlers.has(".htm")) this.bundlers.set(".htm", this.bundlers.get(".html")!)
 		}
 
 		this.inlineQuery = this.inlineQuery ? this.inlineQuery : this.inlineQuery === undefined ? "inline" : undefined
 		this.noCheckQuery = this.noCheckQuery ? this.noCheckQuery : this.noCheckQuery === undefined ? "ignore" : undefined
 
-		copyToMap(require("../../configs/builtinModules.json"), this.builtinModules)
+		copyToMap(require("../../data/builtinModules.json"), this.builtinModules)
 		if (bundlerOptions.builtinModules) {
 			copyToMap(bundlerOptions.builtinModules, this.builtinModules)
 		}
 
-		copyToMap(require("../../configs/mimeTypes.json"), this.mimeTypes)
+		copyToMap(require("../../data/mimeTypes.json"), this.mimeTypes)
 		if (bundlerOptions.mimeTypes) {
 			copyToMap(bundlerOptions.mimeTypes, this.mimeTypes)
 		}
 
-		this.clean = options.clean !== false && !this.noEmit && !containsPath(this.outDir, this.rootDir)
+		this.clean = options.clean !== false && !this.noWrite && !this.filter && !containsPath(this.outDir, this.rootDir)
 		this.sourceMap = !!options.sourceMap
 		const sourceMapOptions = options.sourceMap === "boolean" ? undefined : options.sourceMap as Exclude<typeof options.sourceMap, boolean | undefined>
 		this.sourceMapOptions = {
@@ -190,6 +179,7 @@ export class Builder extends EventEmitter {
 			}
 		}
 
+		/** 读取默认解析器规则 */
 		function getDefaultProcessors(configPath: string) {
 			const processors = require(configPath) as ProcessorRule[]
 			processors.forEach(rule => rule.use = resolvePath(__dirname, rule.use as string))
@@ -246,6 +236,13 @@ export class Builder extends EventEmitter {
 			compilers: assertProcessorRules,
 			bundler(value, name) {
 				assertObject(value, name, {
+					target(value, name) {
+						if (value === "web" || value === "node") {
+							return
+						}
+						errors.push(i18n`'${name}' should be ${"web"} or ${"node"}, got ${stringify(value)}`)
+					},
+
 					resolver(value, name) {
 						if (Array.isArray(value)) {
 							assertArray(value, name, assertResolverRule)
@@ -277,13 +274,9 @@ export class Builder extends EventEmitter {
 
 					output(value, name) {
 						assertObject(value, name, {
+							formatURLPath: assertBoolean,
 							publicURL: assertString,
-							relativeURL(value, name) {
-								if (value === "auto" || typeof value === "boolean") {
-									return
-								}
-								errors.push(i18n`'${name}' should be ${"auto"} or of type ${"boolean"}, got ${stringify(value)}`)
-							},
+							appendURLQuery: assertStringOrFunction,
 							formatURL: assertFunction,
 							prepend: assertStringOrFunction,
 							append: assertStringOrFunction,
@@ -437,7 +430,7 @@ export class Builder extends EventEmitter {
 			filter: assertPattern,
 			encoding: assertString,
 			noPathCheck: assertBoolean,
-			noEmit: assertBoolean,
+			noWrite: assertBoolean,
 			parallel: assertNumber,
 			fs(value, name) {
 				if (value instanceof FileSystem) {
@@ -630,6 +623,7 @@ export class Builder extends EventEmitter {
 				},
 				before: assertFunction,
 				after: assertFunction,
+				enforceCaseSensitive: assertBoolean,
 
 				cache: relative ? assertNotExists : assertBoolean,
 				alias: relative ? assertNotExists : (value, name) => {
@@ -642,7 +636,6 @@ export class Builder extends EventEmitter {
 				},
 				aliasFields: relative ? assertNotExists : assertStringArray,
 				descriptionFiles: relative ? assertNotExists : assertStringArray,
-				enforceCaseSensitive: relative ? assertNotExists : assertBoolean,
 				enforceExtension: relative ? assertNotExists : assertBoolean,
 				extensions: relative ? assertNotExists : assertStringArray,
 				mainFields: relative ? assertNotExists : assertStringArray,
@@ -712,13 +705,13 @@ export class Builder extends EventEmitter {
 				case "ext":
 					return module.ext
 				case "md5":
-					return module.md5.slice(0, parseInt(argument) || 6)
+					return module.md5.slice(0, parseInt(argument) || 8)
 				case "sha1":
-					return module.sha1.slice(0, parseInt(argument) || 6)
+					return module.sha1.slice(0, parseInt(argument) || 8)
 				case "date":
 					return argument ? new Date().toLocaleString() : formatDate(new Date(), argument)
 				case "random":
-					return Math.floor(10 ** (parseInt(argument) || 6) * Math.random())
+					return Math.floor(10 ** (parseInt(argument) || 8) * Math.random())
 				case "builder":
 					return this.name
 				case "version":
@@ -729,43 +722,62 @@ export class Builder extends EventEmitter {
 	}
 
 	/** 获取构建器的名字 */
-	get name() {
-		return "TPack"
-	}
+	get name() { return "TPack" }
 
 	/** 获取构建器的版本号 */
-	get version() {
-		return require("../../package.json").version as string
+	get version() { return require("../../package.json").version as string }
+
+	/**
+	 * 计算指定路径基于根目录的绝对路径
+	 * @param path 要计算的相对路径
+	 */
+	resolvePath(path: string) {
+		return resolvePath(this.rootDir, path)
+	}
+
+	/**
+	 * 计算指定路径基于根目录的相对路径
+	 * @param path 要计算的绝对路径
+	 */
+	relativePath(path: string) {
+		return relativePath(this.rootDir, path)
 	}
 
 	// #endregion
 
-	// #region 入口
+	// #region 启动
 
-	/** 当前正在使用的服务器 */
+	/** 当前正在使用的监听器，如果不需要监听则为 `undefined` */
+	readonly watcher?: Watcher
+
+	/** 当前正在使用的开发服务器，如果不需要服务器则为 `undefined` */
 	readonly devServer?: DevServer
 
 	/**
-	 * 根据配置执行整个构建流程
+	 * 根据配置启动构建
 	 */
 	async run() {
+		// 优先启动服务，如果在构建期间用户请求了某些模块，则这些模块优先构建
+		if (this.devServer) {
+			this.devServer.start()
+		}
 		if (this.watcher) {
-			if (this.devServer) {
-				this.devServer.start()
-			}
+			// 启动监听，如果在启动期间用户更新了模块，则尽早重新编译
 			this.watcher.start()
-			// 监听模式忽略错误
+			const mode = this.devServer ? this.devServer.mode : DevServerMode.normal
+			// 监听模式下忽略构建错误
 			try {
-				await this.build(this.devServer && this.devServer.mode !== DevServerMode.normal)
+				await this.build(mode !== DevServerMode.normal)
 			} catch (e) {
 				this.logger.error(e)
 			}
 			// 空闲模式，继续编译所有模块
-			if (this.devServer && this.devServer.mode === DevServerMode.idle) {
+			if (mode === DevServerMode.idle) {
 				this._buildModules(this.modules.values())
 			}
 			return 0
 		}
+		// 执行完整构建
 		return (await this.build()).errorCount
 	}
 
@@ -776,20 +788,24 @@ export class Builder extends EventEmitter {
 	/** 判断是否在构建前清理生成文件夹 */
 	readonly clean: boolean
 
-	/** 判断是否仅构建但不保存模块 */
-	readonly noEmit: boolean
+	/** 判断是否仅构建但不保存文件到目标文件夹 */
+	readonly noWrite: boolean
 
-	/** 匹配本次构建文件的匹配器 */
+	/** 匹配本次要构建文件的匹配器 */
 	readonly filter?: Matcher
+
+	/** 确保同时只执行一个构建任务 */
+	private readonly _buildQueue = new AsyncQueue()
 
 	/**
 	 * 构建整个项目
-	 * @param pathOnly 是否只处理模块输出路径
+	 * @param pathOnly 是否只处理模块路径
+	 * @returns 返回包含本次构建信息的对象
 	 */
-	build(pathOnly?: boolean) {
+	build(pathOnly = false) {
 		return this._buildQueue.then(async () => {
+			const buildingTask = this.logger.begin(i18n`Building`)
 			const result = new BuildResult()
-			const buildTask = this.logger.begin(i18n`Building`)
 			try {
 				// 第一步：准备开始
 				this.on("buildError", recordError)
@@ -798,126 +814,165 @@ export class Builder extends EventEmitter {
 				this.logger.progress(result.progress)
 
 				// 第二步：清理目标文件夹
-				if (this.clean && !this.filter && !pathOnly) {
-					const cleanTask = this.logger.begin(i18n`Cleaning '${this.logger.formatPath(this.outDir)}'...`)
+				if (this.clean && !pathOnly) {
+					const cleaningTask = this.logger.begin(i18n`Cleaning '${this.logger.formatPath(this.outDir)}'`)
 					try {
 						await this.fs.cleanDir(this.outDir)
 					} finally {
-						this.logger.end(cleanTask)
+						this.logger.end(cleaningTask)
 					}
 				}
 
 				// 第三步：搜索入口模块
-				//  todo: 增量构建
-				const walkTask = this.logger.begin(i18n`Searching modules`)
+				const searchingTask = this.logger.begin(i18n`Searching modules`)
 				const entryModules = result.entryModules
 				try {
-					let baseDir = this.rootDir
-					const matcher = this.matcher
 					const filter = this.filter
-					const matcherBase = matcher.base
-					if (matcherBase && containsPath(baseDir, matcherBase)) baseDir = matcherBase
-					if (filter) {
-						const filterBase = filter.base
-						if (filterBase && containsPath(baseDir, filterBase)) baseDir = filterBase
-					}
-					// 全量构建，清理所有模块缓存
-					await this.fs.walk(baseDir, {
-						dir: matcher.excludeMatcher ? path => !matcher.excludeMatcher!.test(path) : undefined,
-						file: path => {
-							if (matcher.test(path) && (!filter || filter.test(path))) {
-								const module = this.getModule(path)
-								if (pathOnly) {
-									module.data = ""
+					if (this.modules.size) {
+						// 如果是第二次构建，不需要扫描磁盘
+						for (const [path, module] of this.modules.entries()) {
+							if (module.isEntryModule) {
+								if (filter && !filter.test(path)) {
+									continue
 								}
-								if (module.isEntryModule) {
-									// 为了确保每次打包处理结果完全一致，对 entryModules 的模块按路径排序
-									insertSorted(entryModules, module, (x, y) => x.originalPath <= y.originalPath)
-								}
+								insertSorted(entryModules, module, (x, y) => x.originalPath <= y.originalPath)
 							}
 						}
-					})
+					} else {
+						const matcher = this.matcher
+						// 选择层次最深的文件夹开始遍历，减少扫描次数
+						let baseDir: string | null = this.rootDir
+						matcher.patterns.forEach(pattern => {
+							baseDir = deepestPath(baseDir, pattern.base, this.fs.isCaseInsensitive)
+						})
+						if (filter) {
+							filter.patterns.forEach(pattern => {
+								baseDir = deepestPath(baseDir, pattern.base, this.fs.isCaseInsensitive)
+							})
+						}
+						if (baseDir) {
+							await this.fs.walk(baseDir, {
+								dir: matcher.excludeMatcher ? path => !matcher.excludeMatcher!.test(path) : undefined,
+								file: path => {
+									if (matcher.test(path)) {
+										if (filter && !filter.test(path)) {
+											return
+										}
+										// 初始化模块
+										const module = new Module(path, true)
+										module.generatesSourceMap = this.sourceMap
+										this.modules.set(path, module)
+										if (pathOnly) {
+											module.data = ""
+										}
+										// 为了确保每次打包处理结果完全一致，对 entryModules 的模块按路径排序
+										insertSorted(entryModules, module, (x, y) => x.originalPath <= y.originalPath)
+									}
+								}
+							})
+						}
+					}
 					// 任务数 = 搜索任务 + 所有模块编译任务 + 打包任务 + 所有模块保存任务
 					result.doneTaskCount = 1
 					result.totalTaskCount = entryModules.length * 2 + 2
 					this.logger.progress(result.progress)
 				} finally {
-					this.logger.end(walkTask)
+					this.logger.end(searchingTask)
 				}
 
-				// 第四步：编译、解析入口模块及其依赖
-				const compileTask = this.logger.begin(i18n`Compiling modules`)
+				// 第四步：加载（编译、解析）入口模块及其依赖
+				// 理论上，加载一个模块，需要等待其依赖和依赖的依赖都加载完成
+				// 但如果有循环依赖，就会导致互相等待，为简化复杂度
+				// 改用全局计数器的方式，等待所有模块都加载完毕，可以避免循环依赖问题
+				const loadingTask = this.logger.begin(i18n`Loading modules`)
 				try {
 					for (const module of entryModules) {
-						if (module.state !== ModuleState.initial) {
+						if (module.state === ModuleState.initial) {
+							this._loadModule(module).then(() => {
+								result.doneTaskCount++
+								this.logger.progress(result.progress)
+							})
+						} else {
 							result.doneTaskCount++
 							this.logger.progress(result.progress)
-							continue
 						}
-						this._loadModule(module).then(() => {
-							result.doneTaskCount++
-							this.logger.progress(result.progress)
-						})
 					}
 					if (this._loadDeferred.promise) {
 						await this._loadDeferred.promise
 					}
+					// 如果在载入期间存在模块被更新了，则重新载入这些模块
+					await this._loadUpdatingModules()
 				} finally {
-					this.logger.end(compileTask)
+					this.logger.end(loadingTask)
 				}
 
 				// 第五步：提取公共模块
-				if (!pathOnly) {
-					const bundleTask = this.logger.begin(i18n`Bundling modules`)
-					try {
-						for (const bundler of this.bundlers.values()) {
-							if (bundler && bundler.bundle) {
-								await bundler.bundle(entryModules, this)
-							}
+				const bundlingTask = this.logger.begin(i18n`Bundling modules`)
+				try {
+					for (const bundler of this.bundlers.values()) {
+						if (bundler && bundler.bundle) {
+							await bundler.bundle(entryModules, pathOnly, this)
 						}
-						result.doneTaskCount++
-						this.logger.progress(result.progress)
-					} finally {
-						this.logger.end(bundleTask)
 					}
+					result.doneTaskCount++
+					this.logger.progress(result.progress)
+				} finally {
+					this.logger.end(bundlingTask)
 				}
 
-				// 第六步：生成、优化、保存模块
-				const emitTask = this.logger.begin(i18n`Emitting modules`)
+				// 第六步：最终生成（生成、优化、保存）入口模块
+				const emittingTask = this.logger.begin(i18n`Emitting modules`)
 				try {
-					const promises: Promise<void>[] = []
-					for (const module of entryModules) {
-						if (module.state !== ModuleState.loaded) {
-							result.doneTaskCount++
-							this.logger.progress(result.progress)
-							continue
-						}
-						await this._emitModule(module)
+					// 在生成一个模块时需要先生成其依赖，如果并行生成模块，就会出现依赖正在生成的情况
+					// 为降低复杂度，串行生成所有存在依赖的模块，并行生成不存在依赖的模块
+					const writingPromises: Promise<void>[] = []
+					const emittingPromises: Promise<void>[] = []
+					const onEmit = this.noWrite || pathOnly ? (module: Module) => {
 						if (pathOnly) {
 							module.reset()
 						}
-						if (this.noEmit || pathOnly) {
-							result.doneTaskCount++
-							this.logger.progress(result.progress)
-							continue
-						}
-						promises.push(this._writeModule(module).then(() => {
+						result.doneTaskCount++
+						this.logger.progress(result.progress)
+					} : (module: Module) => {
+						writingPromises.push(this._writeModule(module).then(() => {
 							result.doneTaskCount++
 							this.logger.progress(result.progress)
 						}))
 					}
-					await Promise.all(promises)
+					for (const module of entryModules) {
+						if (module.noEmit) {
+							onEmit(module)
+						} else if (module.state === ModuleState.loaded) {
+							if (module.dependencies && module.dependencies.length) {
+								continue
+							}
+							emittingPromises.push(this._emitModule(module).then(() => {
+								onEmit(module)
+							}))
+						} else {
+							result.doneTaskCount++
+							this.logger.progress(result.progress)
+						}
+					}
+					await Promise.all(emittingPromises)
+
+					for (const module of entryModules) {
+						if (module.state === ModuleState.loaded && !module.noEmit) {
+							await this._emitModule(module)
+							onEmit(module)
+						}
+					}
+					await Promise.all(writingPromises)
 				} finally {
-					this.logger.end(emitTask)
+					this.logger.end(emittingTask)
 				}
 
 				// 第七步：完成构建
 				this.emit("buildEnd", result)
+			} finally {
 				this.off("buildError", recordError)
 				this.off("buildWarning", recordWarning)
-			} finally {
-				this.logger.end(buildTask)
-				this.logger.reset()
+				this.logger.end(buildingTask)
 			}
 			if (this.reporter && !pathOnly) {
 				this.reporter(result, this)
@@ -932,9 +987,6 @@ export class Builder extends EventEmitter {
 	// #endregion
 
 	// #region 增量构建
-
-	/** 确保同时只执行一个构建任务 */
-	private readonly _buildQueue = new AsyncQueue()
 
 	/**
 	 * 获取最终生成的模块
@@ -951,7 +1003,7 @@ export class Builder extends EventEmitter {
 		return await this._buildQueue.then(async () => {
 			const module = this.emittedModules.get(outPath)
 			if (module && module.state !== ModuleState.emitted) {
-				await this._buildModule(module)
+				await this._buildModule(module.sourceModule || module)
 			}
 			return module
 		})
@@ -967,7 +1019,7 @@ export class Builder extends EventEmitter {
 		// 确保所有模块都已加载，有些模块可能并不需要立即加载，为了简化流程全部按需要处理
 		await this._loadUpdatingModules()
 		// 生成模块
-		if (module.state === ModuleState.loaded) {
+		if (module.state === ModuleState.loaded && !module.noEmit) {
 			await this._emitModule(module)
 		}
 	}
@@ -1031,7 +1083,6 @@ export class Builder extends EventEmitter {
 	 * @returns 返回受影响的文件数
 	 */
 	private _commitUpdate(path: string, state: ModuleState) {
-		debugger
 		// 为避免影响当前的生成流程，需要等待生成结束后再应用更新
 		// 但如果正在加载阶段，可以直接更新然后让加载器重新加载，以避免浪费时间做生成操作
 		const module = this.getModule(path)
@@ -1041,13 +1092,15 @@ export class Builder extends EventEmitter {
 			if (!this.devServer || this.devServer.mode === DevServerMode.normal) {
 				// 普通模式：全部立即重新构建，为了降低构建次数，多次更新合并一起构建
 				if (state !== ModuleState.changing || count > 0) {
-					this._rebuildAll()
+					this._buildQueue.then(() => {
+						this._rebuild()
+					})
 				}
 			} else if (this.devServer.mode === DevServerMode.idle) {
 				// 空闲模式：全部延时重新构建
 				// 强制重新创建新模块
 				if (state === ModuleState.creating || count > 0) {
-					this._buildQueue.then(async () => {
+					this._buildQueue.then(() => {
 						if (state === ModuleState.creating) {
 							this._updatingModules.add(module)
 						}
@@ -1064,7 +1117,7 @@ export class Builder extends EventEmitter {
 			const count = this._updateModule(module, state, true, module)
 			if (!this.devServer || this.devServer.mode === DevServerMode.normal) {
 				// 普通模式：全部立即重新构建，为了降低构建次数，多次更新合并一起构建
-				this._rebuildAll()
+				this._rebuild()
 			} else if (this.devServer.mode === DevServerMode.idle) {
 				// 空闲模式：全部延时重新构建
 				// 强制重新创建新模块
@@ -1081,17 +1134,13 @@ export class Builder extends EventEmitter {
 		})
 	}
 
+	/** 在开始构建前等待的毫秒数 */
+	readonly buildDelay = 10
+
 	/** 重新构建整个项目 */
-	private _rebuildAll() {
-		this._buildQueue.then(async () => {
-			if (this._buildTimer) {
-				clearTimeout(this._buildTimer)
-			}
-			this._buildTimer = setTimeout(() => {
-				this._buildTimer = undefined
-				this.build()
-			}, this.buildDelay)
-		})
+	private _rebuild() {
+		this._rebuild = defer(() => { this.build() }, this.buildDelay)
+		this._rebuild()
 	}
 
 	/** 添加新模块 */
@@ -1110,10 +1159,10 @@ export class Builder extends EventEmitter {
 	 * @param module 要更新的模块
 	 * @param state 要更新的状态
 	 * @param reset 是否需要重置模块
-	 * @param target 实际发生改变的模块
+	 * @param relatedTarget 实际发生改变的模块
 	 * @returns 返回受影响的模块数
 	 */
-	private _updateModule(module: Module, state: ModuleState, reset: boolean, target: Module) {
+	private _updateModule(module: Module, state: ModuleState, reset: boolean, relatedTarget: Module) {
 		let count = 0
 		switch (module.state) {
 			// 避免循环引用：不重复更新同一个模块
@@ -1141,12 +1190,12 @@ export class Builder extends EventEmitter {
 				count++
 				break
 		}
-		this.emit("updateModule", module, target)
+		this.emit("updateModule", module, relatedTarget)
 		// 更新受影响的模块
 		const references = this.references.get(module.originalPath)
 		if (references) {
 			for (const reference of references) {
-				count += this._updateModule(reference, ModuleState.changing, reset, target)
+				count += this._updateModule(reference, ModuleState.changing, reset, relatedTarget)
 			}
 		}
 
@@ -1157,7 +1206,7 @@ export class Builder extends EventEmitter {
 					if (other.dependencies) {
 						for (const dependency of other.dependencies) {
 							if (dependency.module === module) {
-								count += this._updateModule(dependency.module, ModuleState.changing, reset, target)
+								count += this._updateModule(dependency.module, ModuleState.changing, reset, relatedTarget)
 							}
 						}
 					}
@@ -1167,7 +1216,7 @@ export class Builder extends EventEmitter {
 			case ModuleState.creating:
 				for (const other of this.errorModules.keys()) {
 					if (other.hasWarnings || other.hasErrors) {
-						count += this._updateModule(other, ModuleState.changing, reset, target)
+						count += this._updateModule(other, ModuleState.changing, reset, relatedTarget)
 					}
 				}
 				break
@@ -1175,19 +1224,13 @@ export class Builder extends EventEmitter {
 		return count
 	}
 
-	/** 在开始构建前等待的毫秒数 */
-	readonly buildDelay = 10
-
-	/** 全局构建的计时器 */
-	private _buildTimer?: ReturnType<typeof setTimeout>
-
 	/** 等待构建的队列 */
 	private _buildingModules?: Module[]
 
 	/** 判断是否正在使用空闲时间构建 */
 	private _building?: boolean
 
-	/** 
+	/**
 	 * 利用空闲时间按顺序构建模块
 	 * @param modules 要构建的模块
 	 */
@@ -1221,14 +1264,11 @@ export class Builder extends EventEmitter {
 		}
 		this._buildQueue.then(async () => {
 			await this._buildModule(next)
-			this._buildTimer = setTimeout(() => {
+			setTimeout(() => {
 				this._buildNextModule()
 			}, this.buildDelay)
 		})
 	}
-
-	/** 当前正在使用的监听器 */
-	readonly watcher?: Watcher
 
 	/** 获取每个模块更新后受影响的模块列表，键为更新的模块绝对路径，值为所有受影响的模块对象 */
 	readonly references = new Map<string, Set<Module>>()
@@ -1267,26 +1307,27 @@ export class Builder extends EventEmitter {
 
 	// #endregion
 
-	// #region 载入模块
+	// #region 加载模块
 
 	/** 获取所有模块，键为模块的原始绝对路径 */
 	readonly modules = new Map<string, Module>()
 
 	/**
-	 * 获取指定路径对应的模块
+	 * 获取指定源路径对应的模块
 	 * @param path 模块的原始绝对路径
 	 */
 	getModule(path: string) {
 		let module = this.modules.get(path)
 		if (module === undefined) {
 			this.modules.set(path, module = new Module(path, this.isEntryModule(path)))
+			module.generatesSourceMap = this.sourceMap
 		}
 		return module
 	}
 
 	/**
 	 * 判断指定的路径是否是入口模块
-	 * @param path 要判断的原始绝对路径
+	 * @param path 要判断的绝对路径
 	 */
 	isEntryModule(path: string) {
 		return containsPath(this.rootDir, path, this.fs.isCaseInsensitive) && this.matcher.test(path)
@@ -1304,32 +1345,29 @@ export class Builder extends EventEmitter {
 		readonly matcher?: Matcher
 		/**
 		 * 在解析模块路径之前的回调函数
-		 * @param moduleName 要解析的模块名
-		 * @param query 附加的查询参数
+		 * @param dependency 要处理的依赖项
 		 * @param module 当前地址所在的模块
 		 * @param builder 当前的构建器对象
-		 * @returns 返回实际用于解析的模块名
 		 */
-		readonly before?: (moduleName: string, query: null | { [key: string]: string }, module: Module, builder: Builder) => string
+		readonly before?: (dependency: Dependency, module: Module, builder: Builder) => void
 		/** 模块解析器对象，如果为空则只按相对路径解析 */
 		readonly resolver?: Resolver
+		/** 是否强制区分路径大小写 */
+		readonly enforceCaseSensitive?: boolean
 		/**
 		 * 在解析模块路径之后的回调函数
-		 * @param resolvedPath 已解析的结果
-		 * @param moduleName 要解析的模块名
-		 * @param query 附加的查询参数
+		 * @param dependency 要处理的依赖项
 		 * @param module 当前地址所在的模块
 		 * @param builder 当前的构建器对象
-		 * @returns 返回实际解析后的路径，如果路径不存在则返回空，如果路径不存在且忽略错误则返回 `false`
 		 */
-		readonly after?: (resolvedPath: string | null | false, moduleName: string, query: null | { [key: string]: string }, module: Module, builder: Builder) => string | false
+		readonly after?: (dependency: Dependency, module: Module, builder: Builder) => void
 	}[] = []
-
-	/** 用于标记内联的查询参数名 */
-	readonly inlineQuery?: string
 
 	/** 用于标记不检查指定路径的查询参数名 */
 	readonly noCheckQuery?: string
+
+	/** 用于标记内联的查询参数名 */
+	readonly inlineQuery?: string
 
 	/** 获取所有内置模块 */
 	readonly builtinModules = new Map<string, string | false>()
@@ -1341,11 +1379,8 @@ export class Builder extends EventEmitter {
 	 */
 	private async _loadModule(module: Module) {
 		try {
-			// 理论上，加载一个模块，需要等待其依赖和依赖的依赖都加载完成
-			// 但如果有循环依赖，就会导致互相等待，为简化复杂度
-			// 改用全局计数器的方式，等待所有模块都加载完毕，可以避免循环依赖问题
-			this._loadDeferred.reject()
 			// 准备加载
+			this._loadDeferred.reject()
 			module.state = ModuleState.loading
 			// 编译模块
 			await this._processModule(this.compilerRoot, module)
@@ -1356,32 +1391,15 @@ export class Builder extends EventEmitter {
 			let bundler = module.bundler
 			if (bundler === undefined) module.bundler = bundler = this.bundlers.get(module.ext.toLowerCase())
 			if (bundler) {
-				if (!module.type) {
-					module.type = bundler.type
-				}
 				if (module.data === undefined && bundler.read !== false) {
-					const readTask = this.logger.begin(`${color(i18n`Reading`, ConsoleColor.brightCyan)} ${this.logger.formatPath(module.originalPath)}`)
-					try {
-						if (bundler.read === "text") {
-							module.data = await this.fs.readFile(module.originalPath, this.encoding)
-						} else {
-							module.data = await this.fs.readFile(module.originalPath)
-						}
-					} catch (e) {
-						module.addError({
-							source: i18n`Bundler`,
-							message: i18n`Cannot read file: ${e.message}`,
-							error: e
-						})
+					if (!await this._readModule(module, bundler.read === "text", i18n`Bundler`)) {
 						return
-					} finally {
-						this.logger.end(readTask)
 					}
 					if (module.state !== ModuleState.loading) {
 						return
 					}
 				}
-				const parseTask = this.logger.begin(`${color(i18n`Parsing`, ConsoleColor.brightCyan)} ${this.logger.formatPath(module.originalPath)}`)
+				const parsingTask = this.logger.begin(`${color(i18n`Parsing`, ConsoleColor.brightCyan)} ${this.logger.formatPath(module.originalPath)}`)
 				try {
 					await bundler.parse(module, this)
 				} catch (e) {
@@ -1391,7 +1409,7 @@ export class Builder extends EventEmitter {
 						showErrorStack: true
 					})
 				} finally {
-					this.logger.end(parseTask)
+					this.logger.end(parsingTask)
 				}
 				if (module.state !== ModuleState.loading) {
 					return
@@ -1415,17 +1433,14 @@ export class Builder extends EventEmitter {
 						}
 						continue
 					}
-					// 支持 url?nocheck&inline
-					const questionIndex = dependency.name.indexOf("?")
-					const query = questionIndex < 0 ? null : require("querystring").parse(dependency.name.slice(questionIndex + 1))
-					if (query) {
+					// 支持 ?nocheck&inline
+					if (dependency.query) {
+						const query = require("querystring").parse(dependency.query)
 						if (this.noCheckQuery) {
 							const noCheck = query[this.noCheckQuery]
-							// 移除参数
 							if (noCheck !== undefined) {
 								delete query[this.noCheckQuery]
-								const newQuery = require("querystring").stringify(query)
-								dependency.name = dependency.name.slice(0, questionIndex) + (newQuery ? "?" + newQuery : "")
+								dependency.query = require("querystring").stringify(query)
 							}
 							if (noCheck === "" || noCheck === "true") {
 								continue
@@ -1440,10 +1455,12 @@ export class Builder extends EventEmitter {
 							}
 						}
 					}
-					// 通配符
-					const moduleName = questionIndex < 0 ? dependency.name : dependency.name.slice(0, questionIndex)
-					if (moduleName.indexOf("*") >= 0) {
-						for (const target of await this.fs.glob(resolvePath(module.originalPath, "..", moduleName))) {
+					if (!dependency.name) {
+						continue
+					}
+					// 导入通配符
+					if (dependency.name.indexOf("*") >= 0) {
+						for (const target of await this.fs.glob(dependency.name = resolvePath(module.originalPath, "..", dependency.name))) {
 							module.dependencies.push({
 								...dependency,
 								path: target
@@ -1454,7 +1471,10 @@ export class Builder extends EventEmitter {
 					// 搜索可用的模块名称解析器
 					for (const resolver of this.resolvers) {
 						if (!resolver.matcher || resolver.matcher.test(module.path)) {
-							let name = resolver.before ? resolver.before(moduleName, query, module, this) : moduleName
+							if (resolver.before) {
+								resolver.before(dependency, module, this)
+							}
+							const name = dependency.name
 							let resolvedPath: string | null | false
 							let detail: string | undefined
 							if (resolver.resolver) {
@@ -1491,19 +1511,31 @@ export class Builder extends EventEmitter {
 										detail = resolveContext.trace!.join("\n")
 									}
 								}
-							} else if (isAbsoluteURL(name)) {
-								resolvedPath = false
-							} else {
-								name = resolvePath(module.originalPath, "..", name)
-								if (await this.fs.existsFile(name)) {
-									resolvedPath = name
-								} else {
-									this.emit("moduleNotFound", name, dependency, module)
-									resolvedPath = await this.fs.existsFile(name) ? name : null
+							} else if (await this.fs.existsFile(dependency.name = resolvedPath = resolvePath(module.originalPath, "..", name))) {
+								if (resolver.enforceCaseSensitive && this.fs.isCaseInsensitive) {
+									const realPath = await this.fs.getRealPath(resolvedPath) || resolvedPath
+									if (relativePath(this.rootDir, realPath) !== relativePath(this.rootDir, resolvedPath)) {
+										module.addWarning({
+											source: i18n`Resolver`,
+											message: i18n`The casing of url '${this.logger.formatPath(resolvedPath)}' differs to '${this.logger.formatPath(realPath)}'`,
+											detail: detail,
+											line: dependency.line,
+											column: dependency.column,
+											endLine: dependency.endLine,
+											endColumn: dependency.endColumn,
+											index: dependency.index,
+											endIndex: dependency.endIndex,
+										})
+									}
 								}
+							} else {
+								this.emit("moduleNotFound", dependency, module)
+								resolvedPath = null
 							}
-							if (resolver.after) resolvedPath = resolver.after(resolvedPath, name, query, module, this)
 							dependency.path = resolvedPath
+							if (resolver.after) {
+								resolver.after(dependency, module, this)
+							}
 							if (resolvedPath) {
 								dependency.module = this.getModule(resolvedPath)
 								if (dependency.module.state === ModuleState.initial) {
@@ -1512,7 +1544,7 @@ export class Builder extends EventEmitter {
 							} else if (resolvedPath == null) {
 								const logEntry: ModuleLogEntry = {
 									source: i18n`Resolver`,
-									message: resolver.resolver ? i18n`Cannot find module '${moduleName}'` : i18n`Cannot find path '${this.logger.formatPath(name)}'`,
+									message: resolver.resolver ? i18n`Cannot find module '${name}'` : i18n`Cannot find file '${this.logger.formatPath(dependency.name as string)}'`,
 									detail: detail,
 									line: dependency.line,
 									column: dependency.column,
@@ -1531,13 +1563,13 @@ export class Builder extends EventEmitter {
 						}
 					}
 				}
+				if (module.state !== ModuleState.loading) {
+					return
+				}
 			}
 			// 完成加载
-			if (module.state !== ModuleState.loading) {
-				return
-			}
 			if (!module.type) {
-				module.type = this.getMimeType(module.ext)
+				module.type = bundler && bundler.type || this.getMimeType(module.ext)
 			}
 			module.state = ModuleState.loaded
 			// 监听外部模块
@@ -1548,10 +1580,17 @@ export class Builder extends EventEmitter {
 		} catch (e) {
 			module.addError(e)
 		} finally {
-			// 加载完成
 			this._loadDeferred.resolve()
 		}
 		await this.reportErrorAndWarnings(module)
+	}
+
+	/** 获取所有 MIME 类型 */
+	readonly mimeTypes = new Map<string, string>()
+
+	/** 获取指定扩展名对应的 MIME 类型 */
+	getMimeType(ext: string) {
+		return this.mimeTypes.get(ext) || "application/octet-stream"
 	}
 
 	// #endregion
@@ -1564,11 +1603,8 @@ export class Builder extends EventEmitter {
 	/** 获取第一个优化器 */
 	readonly optimizerRoot?: ResolvedProcessorRule
 
-	/** 获取读取文本文件内容时，默认使用的文件编码 */
-	readonly encoding: string
-
 	/** 获取多核并行处理器个数 */
-	readonly parallel: number
+	readonly parallel: number // todo
 
 	/**
 	 * 使用指定的处理器处理模块
@@ -1587,38 +1623,46 @@ export class Builder extends EventEmitter {
 			if (!processor.processor) {
 				if (processor.use) {
 					try {
-						let use = processor.use!
-						if (typeof use === "string") {
-							use = await this.require(use) as ProcessorFactory
+						let factory = processor.use!
+						if (typeof factory === "string") {
+							factory = await this.require(factory) as ProcessorFactory
 							// 支持 ES6 模块
-							if (typeof use !== "function" && (use as any).__esModule && (use as any).default != null) {
-								use = (use as any).default as ProcessorFactory
+							if (typeof factory !== "function" && (factory as any).__esModule) {
+								factory = (factory as any).default as ProcessorFactory
+								if (typeof factory !== "function") {
+									throw i18n`Plugin '${processor.use}' does not default export a function`
+								}
 							}
 						}
 						// 如果有多个模块都需要使用此处理器，第一次会加载处理器并创建处理器实例，下一次只需等待
 						if (!processor.processor) {
-							if (use.name) {
-								processor.name = use.name
+							processor.processor = new factory(processor.options, this)
+							if (factory.name) {
+								processor.name = factory.name
 							}
-							processor.processor = new use(processor.options, this)
 						}
 					} catch (e) {
 						// 避免重复报告插件加载失败的错误
 						if (!processor.processor) {
-							let reported = false
 							processor.processor = {
 								read: false,
 								process(module) {
-									module.addError({
-										message: i18n`Skipped because cannot load plugin '${processor!.name}': ${e
-											.message}`,
-										error: e,
-										showErrorStack: !reported
+									module.addWarning({
+										message: i18n`Skipped because cannot load plugin '${processor!.name}': ${e.message}`,
+										error: e
 									})
-									reported = true
 								}
 							}
 						}
+						module.addError({
+							message: i18n`Skipped because cannot load plugin '${processor.name}': ${e.message}`,
+							error: e,
+							showErrorStack: true
+						})
+						return
+					}
+					if (module.state !== state) {
+						return
 					}
 				} else {
 					processor.processor = { read: false, process() { } }
@@ -1626,32 +1670,15 @@ export class Builder extends EventEmitter {
 			}
 			// 读取模块内容
 			if (module.data === undefined && processor.processor.read !== false) {
+				if (!await this._readModule(module, processor.processor.read === "text", processor.name)) {
+					return
+				}
 				if (module.state !== state) {
 					return
 				}
-				const readTask = this.logger.begin(`${color(i18n`Reading`, ConsoleColor.brightCyan)} ${this.logger.formatPath(module.originalPath)}`)
-				try {
-					if (processor.processor.read === "text") {
-						module.data = await this.fs.readFile(module.originalPath, this.encoding)
-					} else {
-						module.data = await this.fs.readFile(module.originalPath)
-					}
-				} catch (e) {
-					module.addError({
-						source: processor.name,
-						message: i18n`Cannot read file: ${e.message}`,
-						error: e
-					})
-					break
-				} finally {
-					this.logger.end(readTask)
-				}
 			}
 			// 处理模块
-			if (module.state !== state) {
-				return
-			}
-			const processTask = this.logger.begin(`${color(processor.name, ConsoleColor.brightCyan)} ${this.logger.formatPath(module.originalPath)}`)
+			const processingTask = this.logger.begin(`${color(processor.name, ConsoleColor.brightCyan)} ${this.logger.formatPath(module.originalPath)}`)
 			try {
 				await processor.processor.process(module, this)
 			} catch (e) {
@@ -1662,26 +1689,73 @@ export class Builder extends EventEmitter {
 				})
 				break
 			} finally {
-				this.logger.end(processTask)
+				this.logger.end(processingTask)
 			}
-			if (module.hasErrors) {
+			if (module.state !== state || module.hasErrors) {
 				break
 			}
 			// 计算输出路径
 			if (processor.outPath) {
-				module.path = resolvePath(this.rootDir, processor.outPath(module, this))
-			}
-			// 根据配置终止处理
-			if (module.hasErrors) {
-				break
+				module.path = this.resolvePath(processor.outPath(module, this))
 			}
 			processor = processor.nextTrue
 		}
 	}
 
+	/** 获取读取文本文件内容时，默认使用的文件编码 */
+	readonly encoding: string
+
+	/**
+	 * 读取模块的内容
+	 * @param module 要读取的模块
+	 * @param text 是否以文本方式读取
+	 * @param source 读取的来源
+	 * @returns 如果读取成功则返回 `true`，否则返回 `false`
+	 */
+	private async _readModule(module: Module, text: boolean, source: string) {
+		const readingTask = this.logger.begin(`${color(i18n`Reading`, ConsoleColor.brightCyan)} ${this.logger.formatPath(module.originalPath)}`)
+		try {
+			if (text) {
+				module.data = await this.fs.readFile(module.originalPath, this.encoding)
+			} else {
+				module.data = await this.fs.readFile(module.originalPath)
+			}
+		} catch (e) {
+			module.addError({
+				source: source,
+				message: i18n`Cannot read file: ${e.message}`,
+				error: e
+			})
+			return false
+		} finally {
+			this.logger.end(readingTask)
+		}
+		return true
+	}
+
 	// #endregion
 
 	// #region 生成模块
+
+	/**
+	 * 生成指定的模块
+	 * @param module 要生成的模块
+	 * @param read 是否读取模块内容
+	 * - `"text"`（默认）: 使用全局设置的编码读取模块内容
+	 * - `true`/`"binary"`: 读取二进制数据
+	 * - `false`: 不读取模块内容
+	 */
+	async emitModule(module: Module, read?: boolean | "text" | "binary") {
+		// 读取模块内容
+		if (module.data === undefined && read) {
+			await this._readModule(module, read === "text", "Emit")
+		}
+		// 打包器会调用此函数生成依赖，如果依赖已生成或正在生成，则不重复生成
+		// 一般地，只有模块有循环依赖时，才会出现一个状态为“正在生成”的模块
+		if (module.state === ModuleState.loaded) {
+			await this._emitModule(module)
+		}
+	}
 
 	/** 提取外部模块的规则 */
 	readonly externalModules: {
@@ -1759,26 +1833,15 @@ export class Builder extends EventEmitter {
 	 * @param module 要生成的模块
 	 */
 	private async _emitModule(module: Module) {
-		// 多个模块的生成操作需要串行，因为：
-		// 1. 生成操作期间几乎不使用 IO，对单线程的 Node 来说，串行和并行性能差别小
-		// 2. 并行需处理模块循环依赖问题，比较复杂
-		// 生成兄弟模块
-		if (module.siblings) {
-			for (const sibling of module.siblings) {
-				if (sibling.state === ModuleState.loaded) {
-					await this._emitModule(sibling)
-				}
-			}
-		}
 		try {
 			// 避免重复生成
 			module.state = ModuleState.emitting
 			// 生成模块
 			const bundler = module.bundler
 			if (bundler) {
-				const generateTask = this.logger.begin(`${color(i18n`Generating`, ConsoleColor.brightCyan)} ${this.logger.formatPath(module.originalPath)}`)
+				const generatingTask = this.logger.begin(`${color(i18n`Generating`, ConsoleColor.brightCyan)} ${this.logger.formatPath(module.originalPath)}`)
 				try {
-					await bundler.generate(module, module, this)
+					await bundler.generate(module, this)
 				} catch (e) {
 					module.addError({
 						source: i18n`Bundler`,
@@ -1786,7 +1849,7 @@ export class Builder extends EventEmitter {
 						showErrorStack: true
 					})
 				} finally {
-					this.logger.end(generateTask)
+					this.logger.end(generatingTask)
 				}
 			}
 			// 优化模块
@@ -1794,112 +1857,102 @@ export class Builder extends EventEmitter {
 				await this._processModule(this.optimizerRoot, module)
 			}
 			// 计算路径
-			if (module.isEntryModule) {
-				module.path = this.getOutputPath(module.path)
-			} else {
-				let inline = true
-				for (const externalModule of this.externalModules) {
-					if (externalModule.matcher && !externalModule.matcher.test(module.path)) {
-						continue
-					}
-					if (externalModule.matchType && !(module.type || this.getMimeType(module.ext)).startsWith(externalModule.matchType + "/")) {
-						continue
-					}
-					if (externalModule.minSize) {
-						if (module.data != undefined) {
-							// 计算 module.size 性能较差，计算 module.data.length 性能较高
-							// module.size >= module.data.length，如果 module.data.length > minSize，则无需计算 module.size
-							if (module.data.length < externalModule.minSize && module.size < externalModule.minSize) {
-								continue
-							}
-						} else {
-							const stat = await this.fs.getStat(module.originalPath)
-							if (stat.size < externalModule.minSize) {
-								continue
-							}
-						}
-					}
-					module.path = resolvePath(this.outDir, externalModule.outPath(module, this))
-					inline = false
-					break
-				}
-				if (inline) {
-					module.noEmit = true
-				}
-			}
-			// 检查路径
-			const path = module.path
 			if (!module.noEmit) {
-				if (!this.noPathCheck) {
-					if (module.data != undefined && pathEquals(module.originalPath, path, this.fs.isCaseInsensitive)) {
-						module.noEmit = true
-						module.addError(i18n`Cannot overwrite source file`)
-					}
-					if (!containsPath(this.outDir, path, this.fs.isCaseInsensitive)) {
-						module.noEmit = true
-						module.addError(i18n`Cannot write files outside the outDir '${this.logger.formatPath(this.outDir)}': '${path}'`)
-					}
-				}
-				// 检查路径冲突
-				const exists = this.emittedModules.get(path)
-				if (exists && exists.state !== ModuleState.deleted) {
-					if (exists !== module) {
-						module.noEmit = true
-						module.addError(i18n`Output path conflicts with '${this.logger.formatPath(exists.originalPath)}': '${path}'`)
-					}
-				} else {
-					this.emittedModules.set(path, module)
-				}
-			}
-			// 计算源映射
-			if (this.sourceMap) {
-				const originalMap = module.sourceMapObject
-				if (originalMap) {
-					const mapPath = module.sourceMapPath || (module.sourceMapPath = this.sourceMapOptions.inline ? path : this.sourceMapOptions.outPath ? resolvePath(this.outDir, this.sourceMapOptions.outPath(module, this)) : path + ".map")
-					const mapObject = module.sourceMap = {
-						version: originalMap.version || 3
-					} as SourceMapObject
-					if (this.sourceMapOptions.includeFile) {
-						mapObject.file = relativePath(getDir(mapPath), path)
-					}
-					if (this.sourceMapOptions.sourceRoot != undefined) {
-						mapObject.sourceRoot = this.sourceMapOptions.sourceRoot
-					}
-					if (originalMap.sources) {
-						mapObject.sources = []
-						for (let i = 0; i < originalMap.sources.length; i++) {
-							mapObject.sources[i] = this.sourceMapOptions.source ?
-								this.sourceMapOptions.source(originalMap.sources[i], mapPath, module, this) :
-								mapObject.sourceRoot ?
-									mapObject.sourceRoot === "file:///" ?
-										normalizePath(originalMap.sources[i]) :
-										relativePath(this.rootDir, originalMap.sources[i]) :
-									relativePath(getDir(mapPath), originalMap.sources[i])
+				// 计算路径
+				if (!module.isEntryModule) {
+					module.noEmit = true
+					for (const externalModule of this.externalModules) {
+						if (externalModule.matcher && !externalModule.matcher.test(module.path)) {
+							continue
 						}
-						if (this.sourceMapOptions.includeSourcesContent) {
-							mapObject.sourcesContent = []
-							for (let i = 0; i < originalMap.sources.length; i++) {
-								let sourcesContent = originalMap.sourcesContent && originalMap.sourcesContent[i]
-								if (sourcesContent == undefined) {
-									sourcesContent = await (this.sourceMapOptions.sourceContent ? this.sourceMapOptions.sourceContent(originalMap.sources[i], mapPath, module, this) : this.fs.readFile(originalMap.sources[i], this.encoding))
+						if (externalModule.matchType && !(module.type || this.getMimeType(module.ext)).startsWith(externalModule.matchType + "/")) {
+							continue
+						}
+						if (externalModule.minSize) {
+							if (module.data != undefined) {
+								// 计算 module.size 性能较差，计算 module.data.length 性能较高
+								// module.size >= module.data.length，如果 module.data.length > minSize，则无需计算 module.size
+								if (module.data.length < externalModule.minSize && module.size < externalModule.minSize) {
+									continue
 								}
-								mapObject.sourcesContent[i] = sourcesContent
+							} else {
+								const stat = await this.fs.getStat(module.originalPath)
+								if (stat.size < externalModule.minSize) {
+									continue
+								}
 							}
 						}
+						module.path = this.resolvePath(externalModule.outPath(module, this))
+						module.noEmit = false
+						break
 					}
-					if (this.sourceMapOptions.includeNames && originalMap.names && originalMap.names.length) {
-						mapObject.names = originalMap.names
-					}
-					mapObject.mappings = originalMap.mappings || ""
-					const mapURL = this.sourceMapOptions.inline ?
-						encodeDataUri("application/json", JSON.stringify(mapObject, undefined, this.sourceMapOptions.indent)) :
-						this.sourceMapOptions.url ? this.sourceMapOptions.url(mapPath, module, this) : relativePath(getDir(path), mapPath)
-					if (mapURL) {
-						if (module.data === undefined) {
-							module.data = await this.fs.readFile(module.originalPath, this.encoding)
+				}
+				// 添加生成模块
+				this._addToEmittedModules(module)
+				// 计算源映射
+				// FIXME: 支持内联模块的源映射？
+				if (this.sourceMap) {
+					const originalMap = module.sourceMapObject
+					if (originalMap) {
+						// 空闲/快速模块：源映射必须生成在最终文件旁边
+						const fixedPath = this.devServer && this.devServer.mode !== DevServerMode.normal
+						const mapPath = fixedPath ? module.path + ".map" : this.sourceMapOptions.inline ? module.path : this.sourceMapOptions.outPath ? this.resolvePath(this.sourceMapOptions.outPath(module, this)) : module.path + ".map"
+						const mapObject = {
+							version: originalMap.version || 3
+						} as SourceMapObject
+						if (this.sourceMapOptions.includeFile) {
+							mapObject.file = relativePath(getDir(mapPath), module.path)
 						}
-						module.content += createSourceMappingURLComment(mapURL, /\.js$/i.test(path))
+						if (this.sourceMapOptions.sourceRoot != undefined) {
+							mapObject.sourceRoot = this.sourceMapOptions.sourceRoot
+						}
+						if (originalMap.sources) {
+							mapObject.sources = []
+							for (let i = 0; i < originalMap.sources.length; i++) {
+								mapObject.sources[i] = this.sourceMapOptions.source ?
+									this.sourceMapOptions.source(originalMap.sources[i], mapPath, module, this) :
+									mapObject.sourceRoot ?
+										mapObject.sourceRoot === "file:///" ?
+											normalizePath(originalMap.sources[i]) :
+											this.relativePath(originalMap.sources[i]) :
+										relativePath(getDir(mapPath), originalMap.sources[i])
+							}
+							if (this.sourceMapOptions.includeSourcesContent) {
+								mapObject.sourcesContent = []
+								for (let i = 0; i < originalMap.sources.length; i++) {
+									let sourcesContent = originalMap.sourcesContent && originalMap.sourcesContent[i]
+									if (sourcesContent == undefined) {
+										sourcesContent = await (this.sourceMapOptions.sourceContent ? this.sourceMapOptions.sourceContent(originalMap.sources[i], mapPath, module, this) : this.fs.readFile(originalMap.sources[i], this.encoding))
+									}
+									mapObject.sourcesContent[i] = sourcesContent
+								}
+							}
+						}
+						if (this.sourceMapOptions.includeNames && originalMap.names && originalMap.names.length) {
+							mapObject.names = originalMap.names
+						}
+						mapObject.mappings = originalMap.mappings || ""
+						const mapString = module.sourceMap = JSON.stringify(mapObject, undefined, this.sourceMapOptions.indent)
+						const mapURL = this.sourceMapOptions.inline ?
+							encodeDataURI("application/json", mapString) :
+							this.sourceMapOptions.url ? this.sourceMapOptions.url(mapPath, module, this) : relativePath(getDir(module.path), mapPath)
+						if (mapURL) {
+							if (module.data === undefined) {
+								await this._readModule(module, true, "SourceMap")
+							}
+							module.content += createSourceMappingURLComment(mapURL, module.type === "text/javascript")
+						}
+						if (!this.sourceMapOptions.inline && !fixedPath) {
+							module.addSibling(mapPath, mapString)
+						}
 					}
+				}
+			}
+			// 生成依赖
+			if (module.siblings) {
+				for (const sibling of module.siblings) {
+					if (!sibling.type) sibling.type = this.getMimeType(getExt(sibling.path))
+					this._addToEmittedModules(sibling)
 				}
 			}
 			module.emitTime = Date.now()
@@ -1917,11 +1970,35 @@ export class Builder extends EventEmitter {
 	}
 
 	/**
-	 * 计算一个绝对路径的最终输出绝对路径
-	 * @param path 要计算的绝对路径
+	 * 添加一个模块到生成列表
+	 * @param module 生成的模块
 	 */
-	getOutputPath(path: string) {
-		return setDir(path, this.outDir, this.rootDir)
+	private _addToEmittedModules(module: Module) {
+		const sourceModule = module.sourceModule || module
+		// 检查路径
+		if (!this.noPathCheck) {
+			if (module.data != undefined && pathEquals(sourceModule.originalPath, this.getOutputPath(module.path), this.fs.isCaseInsensitive)) {
+				module.noEmit = true
+				sourceModule.addError(i18n`Cannot overwrite source file`)
+				return
+			}
+			if (!containsPath(this.rootDir, module.path, this.fs.isCaseInsensitive)) {
+				module.noEmit = true
+				sourceModule.addError(i18n`Cannot write files outside the outDir '${this.logger.formatPath(this.outDir)}': '${module.path}'`)
+				return
+			}
+		}
+		// 检查路径冲突
+		const exists = this.emittedModules.get(module.path)
+		if (exists && exists.state !== ModuleState.deleted) {
+			if (exists !== module) {
+				module.noEmit = true
+				sourceModule.addError(i18n`Output path conflicts with '${this.logger.formatPath((exists.sourceModule || exists).originalPath)}': '${module.path}'`)
+			}
+			return
+		}
+		// 添加模块
+		this.emittedModules.set(module.path, module)
 	}
 
 	// #endregion
@@ -1933,58 +2010,53 @@ export class Builder extends EventEmitter {
 	 * @param module 要保存的模块
 	 */
 	private async _writeModule(module: Module) {
+		// 保存兄弟文件
 		if (module.siblings) {
 			for (const sibling of module.siblings) {
-				await this._writeModule(sibling)
+				this._writeModule(sibling)
 			}
 		}
 		// 允许插件跳过保存当前模块
 		if (module.noEmit) {
 			return
 		}
-		// 保存源映射
-		if (module.sourceMap && this.sourceMap && !this.sourceMapOptions.inline) {
-			const writeTask = this.logger.begin(`${color(i18n`Writing`, ConsoleColor.brightCyan)} ${this.logger.formatPath(module.sourceMapPath!)}`)
-			try {
-				await this.fs.writeFile(module.sourceMapPath!, JSON.stringify(module.sourceMapObject, undefined, this.sourceMapOptions.indent))
-			} catch (e) {
-				module.addError({
-					fileName: module.sourceMapPath,
-					message: `Cannot write file: ${e.message}`,
-					error: e
-				})
-			} finally {
-				this.logger.end(writeTask)
-			}
-		}
 		// 保存文件
+		const path = this.getOutputPath(module.path)
 		if (module.data !== undefined) {
-			const writeTask = this.logger.begin(`${color(i18n`Writing`, ConsoleColor.brightCyan)} ${this.logger.formatPath(module.originalPath)}`)
+			const writingTask = this.logger.begin(`${color(i18n`Writing`, ConsoleColor.brightCyan)} ${this.logger.formatPath(module.originalPath)}`)
 			try {
-				await this.fs.writeFile(module.path, module.data)
+				await this.fs.writeFile(path, module.data)
 			} catch (e) {
 				module.addError({
 					message: `Cannot write file: ${e.message}`,
 					error: e
 				})
 			} finally {
-				this.logger.end(writeTask)
+				this.logger.end(writingTask)
 			}
-		} else if (!pathEquals(module.originalPath, module.path, this.fs.isCaseInsensitive)) {
-			const copyTask = this.logger.begin(`${color(i18n`Copying`, ConsoleColor.brightCyan)} ${this.logger.formatPath(module.originalPath)}`)
+		} else if (!pathEquals(module.originalPath, path, this.fs.isCaseInsensitive)) {
+			const copyingTask = this.logger.begin(`${color(i18n`Copying`, ConsoleColor.brightCyan)} ${this.logger.formatPath(module.originalPath)}`)
 			try {
-				await this.fs.copyFile(module.originalPath, module.path)
+				await this.fs.copyFile(module.originalPath, path)
 			} catch (e) {
 				module.addError({
 					message: `Cannot copy file: ${e.message}`,
 					error: e
 				})
 			} finally {
-				this.logger.end(copyTask)
+				this.logger.end(copyingTask)
 			}
 		}
 		this.emit("writeModule", module)
 		await this.reportErrorAndWarnings(module)
+	}
+
+	/**
+	 * 计算一个绝对路径的最终输出绝对路径
+	 * @param path 要计算的绝对路径
+	 */
+	getOutputPath(path: string) {
+		return setDir(path, this.outDir, this.rootDir)
 	}
 
 	// #endregion
@@ -2005,7 +2077,11 @@ export class Builder extends EventEmitter {
 			for (let i = module.reportedErrorCount; i < module.errors.length; i++) {
 				const logEntry = module.errors[i]
 				if (logEntry.line != undefined && logEntry.content == undefined && logEntry.fileName != undefined && this.logger.codeFrame && logEntry.codeFrame == undefined) {
-					logEntry.content = await this.fs.readFile(logEntry.fileName, this.encoding)
+					try {
+						logEntry.content = await this.fs.readFile(logEntry.fileName, this.encoding)
+					} catch (e) {
+						this.logger.debug(e)
+					}
 				}
 				module.reportedErrorCount++
 				if (!this.emit("buildError", logEntry, module)) {
@@ -2021,7 +2097,11 @@ export class Builder extends EventEmitter {
 			for (let i = module.reportedWarningCount; i < module.warnings.length; i++) {
 				const logEntry = module.warnings[i]
 				if (logEntry.line != undefined && logEntry.content == undefined && logEntry.fileName != undefined && this.logger.codeFrame && logEntry.codeFrame == undefined) {
-					logEntry.content = await this.fs.readFile(logEntry.fileName, this.encoding)
+					try {
+						logEntry.content = await this.fs.readFile(logEntry.fileName, this.encoding)
+					} catch (e) {
+						this.logger.debug(e)
+					}
 				}
 				module.reportedWarningCount++
 				if (!this.emit("buildWarning", logEntry, module)) {
@@ -2067,89 +2147,6 @@ export class Builder extends EventEmitter {
 	 */
 	installPackage(name: string) {
 		return installPackage(name, this.baseDir, this.installCommand, this.logger)
-	}
-
-	// #endregion
-
-	// #region 打包辅助
-
-	/** 指定如何合并依赖生成最终的代码 */
-	output: {
-		/**
-		 * 最终引用模块的根地址，一般以 `/` 结尾
-		 * @description 如果需要使用 CDN，可配置成 CDN 的根地址，同时记得在发布后将相关文件上传到 CDN 服务器
-		 * @default "/"
-		 * @example "https://cdn.example.com/assets/"
-		 */
-		publicURL?: string
-		/**
-		 * 最终是否以相对路径引用模块
-		 * - `"auto"`（默认）:默认使用相对路径，如果模块可能被内联到其它模块，则改用绝对路径
-		 * - `true`：强制使用相对路径
-		 * - `false`：强制使用绝对路径
-		 */
-		relativeURL?: "auto" | boolean
-		/**
-		 * 自定义最终在生成模块中引用其它模块的地址的回调函数
-		 * @param module 要引用的模块
-		 * @param containingModule 地址所在的模块
-		 * @param builder 当前的构建器对象
-		 * @return 返回生成的地址
-		 * @example (module, containingModule) => relativePath(containingModule.dir, module.path) // 改用相对地址
-		*/
-		formatURL?: (module: Module, containingModule: Module, builder: Builder) => string | undefined
-		/**
-		 * 在最终合并生成的模块开头追加的内容
-		 * @param containingModule 要生成的模块
-		 * @param builder 当前的构建器对象
-		 * @example "/* This file is generated by tpack. DO NOT EDIT DIRECTLY!! *‌/"
-		 */
-		prepend?: (containingModule: Module, builder: Builder) => string
-		/**
-		 * 在最终合并生成的模块末尾追加的内容
-		 * @param containingModule 要生成的模块
-		 * @param builder 当前的构建器对象
-		 */
-		append?: (containingModule: Module, builder: Builder) => string
-		/**
-		 * 在每个依赖模块开头追加的内容
-		 * @param module 引用的模块
-		 * @param containingModule 要生成的模块
-		 * @param builder 当前的构建器对象
-		 */
-		modulePrepend?: (module: Module, containingModule: Module, builder: Builder) => string
-		/**
-		 * 在每个依赖模块末尾追加的内容
-		 * @param module 引用的模块
-		 * @param containingModule 要生成的模块
-		 * @param builder 当前的构建器对象
-		 */
-		moduleAppend?: (module: Module, containingModule: Module, builder: Builder) => string
-		/**
-		 * 在每个依赖模块之间插入的代码
-		 * @default "\n\n"
-		 */
-		moduleSeperator?: string
-		/**
-		 * 生成的文件中用于缩进源码的字符串
-		 * @default "\t"
-		 */
-		indentString?: string
-		/**
-		 * 生成的文件中用于换行的字符串
-		 * @default "\n"
-		 */
-		newLine?: string
-	}
-
-	// todo
-
-	/** 获取所有 MIME 类型 */
-	readonly mimeTypes = new Map<string, string>()
-
-	/** 获取指定扩展名对应的 MIME 类型 */
-	getMimeType(ext: string) {
-		return this.mimeTypes.get(ext) || "application/octet-stream"
 	}
 
 	// #endregion
@@ -2242,113 +2239,7 @@ export interface BuilderOptions {
 		html?: HTMLBundlerOptions
 
 		/** 指定如何合并依赖生成最终的代码 */
-		output?: {
-			/**
-			 * 最终引用模块的根地址，一般以 `/` 结尾
-			 * @description 如果需要使用 CDN，可配置成 CDN 的根地址，同时记得在发布后将相关文件上传到 CDN 服务器
-			 * @default "/"
-			 * @example "https://cdn.example.com/assets/"
-			 */
-			publicURL?: string
-			/**
-			 * 最终是否以相对路径引用模块
-			 * - `"auto"`（默认）: 默认使用相对地址，如果模块可能被内联到其它模块则使用绝对地址
-			 * - `true`: 强制使用相对地址
-			 * - `false`: 强制使用绝对地址
-			 */
-			relativeURL?: "auto" | boolean
-			/**
-			 * 自定义最终生成的模块引用其它模块的地址的回调函数
-			 * @param module 要引用的模块
-			 * @param containingModule 地址所在的模块
-			 * @param builder 当前的构建器对象
-			 * @return 返回生成的地址
-			 * @example (module, containingModule) => relativePath(containingModule.dir, module.path)
-			*/
-			formatURL?: (module: Module, containingModule: Module, builder: Builder) => string | undefined
-			/**
-			 * 在最终合并生成的模块开头追加的内容，如果是字符串，则其中以下标记会被替换：
-			 * - `<path>`: 要生成的模块的相对路径，等价于 `<dir>/<name><ext>`
-			 * - `<dir>`: 要生成的模块所在文件夹的相对路径
-			 * - `<name>`: 要生成的模块的文件名（不含文件夹和扩展名部分）
-			 * - `<ext>`: 要生成的模块的扩展名（含点）
-			 * - `<md5>`: 要生成的模块内容的 MD5 串（小写），默认截取前 6 位，如果要截取前 n 位，使用 `<md5:n>`
-			 * - `<sha1>`: 要生成的模块内容的 SHA-1 串（小写），默认截取前 6 位，如果要截取前 n 位，使用 `<sha1:n>`
-			 * - `<date>`: 当前时间，默认为用户本地可读格式，如果要自定义格式，使用如 `<date:yyyyMMdd>`
-			 * - `<random>`: 随机整数，默认为 6 位，如果要自定义为 n  位，使用如 `<rand:n>`
-			 * - `<builder>`: 构建器的名字，默认为 `TPack`
-			 * - `<version>`: 构建器的版本号
-			 * @param containingModule 要生成的模块
-			 * @param builder 当前的构建器对象
-			 * @example "/* This file is generated by <builder>. DO NOT EDIT DIRECTLY!! *‌/"
-			 */
-			prepend?: string | ((containingModule: Module, builder: Builder) => string)
-			/**
-			 * 在最终合并生成的模块末尾追加的内容，如果是字符串，则其中以下标记会被替换：
-			 * - `<path>`: 要生成的模块的相对路径，等价于 `<dir>/<name><ext>`
-			 * - `<dir>`: 要生成的模块所在文件夹的相对路径
-			 * - `<name>`: 要生成的模块的文件名（不含文件夹和扩展名部分）
-			 * - `<ext>`: 要生成的模块的扩展名（含点）
-			 * - `<md5>`: 要生成的模块内容的 MD5 串（小写），默认截取前 6 位，如果要截取前 n 位，使用 `<md5:n>`
-			 * - `<sha1>`: 要生成的模块内容的 SHA-1 串（小写），默认截取前 6 位，如果要截取前 n 位，使用 `<sha1:n>`
-			 * - `<date>`: 当前时间，默认为用户本地可读格式，如果要自定义格式，使用如 `<date:yyyyMMdd>`
-			 * - `<random>`: 随机整数，默认为 6 位，如果要自定义为 n  位，使用如 `<rand:n>`
-			 * - `<builder>`: 构建器的名字，默认为 `TPack`
-			 * - `<version>`: 构建器的版本号
-			 * @param containingModule 要生成的模块
-			 * @param builder 当前的构建器对象
-			 */
-			append?: string | ((containingModule: Module, builder: Builder) => string)
-			/**
-			 * 在每个依赖模块开头追加的内容，如果是字符串，则其中以下标记会被替换：
-			 * - `<path>`: 引用的模块的相对路径，等价于 `<dir>/<name><ext>`
-			 * - `<dir>`: 引用的模块所在文件夹的相对路径
-			 * - `<name>`: 引用的模块的文件名（不含文件夹和扩展名部分）
-			 * - `<ext>`: 引用的模块的扩展名（含点）
-			 * - `<md5>`: 引用的模块内容的 MD5 串（小写），默认截取前 6 位，如果要截取前 n 位，使用 `<md5:n>`
-			 * - `<sha1>`: 引用的模块内容的 SHA-1 串（小写），默认截取前 6 位，如果要截取前 n 位，使用 `<sha1:n>`
-			 * - `<date>`: 当前时间，默认为用户本地可读格式，如果要自定义格式，使用如 `<date:yyyyMMdd>`
-			 * - `<random>`: 随机整数，默认为 6 位，如果要自定义为 n  位，使用如 `<rand:n>`
-			 * - `<builder>`: 构建器的名字，默认为 `TPack`
-			 * - `<version>`: 构建器的版本号
-			 * @param module 引用的模块
-			 * @param containingModule 要生成的模块
-			 * @param builder 当前的构建器对象
-			 */
-			modulePrepend?: string | ((module: Module, containingModule: Module, builder: Builder) => string)
-			/**
-			 * 在每个依赖模块末尾追加的内容，如果是字符串，则其中以下标记会被替换：
-			 * - `<path>`: 引用的模块的相对路径，等价于 `<dir>/<name><ext>`
-			 * - `<dir>`: 引用的模块所在文件夹的相对路径
-			 * - `<name>`: 引用的模块的文件名（不含文件夹和扩展名部分）
-			 * - `<ext>`: 引用的模块的扩展名（含点）
-			 * - `<md5>`: 引用的模块内容的 MD5 串（小写），默认截取前 6 位，如果要截取前 n 位，使用 `<md5:n>`
-			 * - `<sha1>`: 引用的模块内容的 SHA-1 串（小写），默认截取前 6 位，如果要截取前 n 位，使用 `<sha1:n>`
-			 * - `<date>`: 当前时间，默认为用户本地可读格式，如果要自定义格式，使用如 `<date:yyyyMMdd>`
-			 * - `<random>`: 随机整数，默认为 6 位，如果要自定义为 n  位，使用如 `<rand:n>`
-			 * - `<builder>`: 构建器的名字，默认为 `TPack`
-			 * - `<version>`: 构建器的版本号
-			 * @param module 引用的模块
-			 * @param containingModule 要生成的模块
-			 * @param builder 当前的构建器对象
-			 */
-			moduleAppend?: string | ((module: Module, containingModule: Module, builder: Builder) => string)
-			/**
-			 * 在每个依赖模块之间插入的代码
-			 * @default "\n\n"
-			 */
-			moduleSeperator?: string
-			/**
-			 * 生成的文件中用于缩进源码的字符串
-			 * @default "\t"
-			 */
-			indentString?: string
-			/**
-			 * 生成的文件中用于换行的字符串
-			 * @default "\n"
-			 */
-			newLine?: string
-		}
+		output?: OutputOptions
 
 		/** 指定应该如何打包不同扩展名的模块，键为扩展名（含点），值为打包器构造函数或实例，如果设为 `false` 则不打包此类型 */
 		bundlers?: { [ext: string]: (new (options: any, builder: Builder) => Bundler) | Bundler | false }
@@ -2399,10 +2290,10 @@ export interface BuilderOptions {
 		 * - `<dir>`: 源模块所在文件夹的相对路径
 		 * - `<name>`: 源模块的文件名（不含文件夹和扩展名部分）
 		 * - `<ext>`: 源模块的扩展名（含点）
-		 * - `<md5>`: 源模块内容的 MD5 串（小写），默认截取前 6 位，如果要截取前 n 位，使用 `<md5:n>`
-		 * - `<sha1>`: 源模块内容的 SHA-1 串（小写），默认截取前 6 位，如果要截取前 n 位，使用 `<sha1:n>`
+		 * - `<md5>`: 源模块内容的 MD5 串（小写），默认截取前 8 位，如果要截取前 n 位，使用 `<md5:n>`
+		 * - `<sha1>`: 源模块内容的 SHA-1 串（小写），默认截取前 8 位，如果要截取前 n 位，使用 `<sha1:n>`
 		 * - `<date>`: 当前时间，默认为用户本地可读格式，如果要自定义格式，使用如 `<date:yyyyMMdd>`
-		 * - `<random>`: 随机整数，默认为 6 位，如果要自定义为 n  位，使用如 `<rand:n>`
+		 * - `<random>`: 随机整数，默认为 8 位，如果要自定义为 n  位，使用如 `<rand:n>`
 		 * - `<builder>`: 构建器的名字，默认为 `TPack`
 		 * - `<version>`: 构建器的版本号
 		 * @param module 所属的模块
@@ -2494,7 +2385,7 @@ export interface BuilderOptions {
 	 * 对象: 根据对象的配置启动开发服务器
 	 */
 	devServer?: boolean | number | string | DevServerOptions
-	/** 
+	/**
 	 * 用于安装模块的命令，其中 `<module>` 会被替换为实际的模块名，如果设为 `false` 则不自动安装模块
 	 * @default "npm install <module> --colors"
 	 * @example "yarn add <module>"
@@ -2533,7 +2424,7 @@ export interface BuilderOptions {
 	 * 是否仅构建但不实际生成文件，可用于验证代码是否有错但不影响任何文件
 	 * @default false
 	 */
-	noEmit?: boolean
+	noWrite?: boolean
 	/**
 	 * 多核并行构建的进程数
 	 * @default 1
@@ -2585,10 +2476,10 @@ export interface ProcessorRule extends Partial<Processor> {
 	 * - `<dir>`: 模块所在文件夹的相对路径
 	 * - `<name>`: 模块的文件名（不含文件夹和扩展名部分）
 	 * - `<ext>`: 模块的扩展名（含点）
-	 * - `<md5>`: 模块内容的 MD5 串（小写），默认截取前 6 位，如果要截取前 n 位，使用 `<md5:n>`
-	 * - `<sha1>`: 模块内容的 SHA-1 串（小写），默认截取前 6 位，如果要截取前 n 位，使用 `<sha1:n>`
+	 * - `<md5>`: 模块内容的 MD5 串（小写），默认截取前 8 位，如果要截取前 n 位，使用 `<md5:n>`
+	 * - `<sha1>`: 模块内容的 SHA-1 串（小写），默认截取前 8 位，如果要截取前 n 位，使用 `<sha1:n>`
 	 * - `<date>`: 当前时间，默认为用户本地可读格式，如果要自定义格式，使用如 `<date:yyyyMMdd>`
-	 * - `<random>`: 随机整数，默认为 6 位，如果要自定义为 n  位，使用如 `<rand:n>`
+	 * - `<random>`: 随机整数，默认为 8 位，如果要自定义为 n  位，使用如 `<rand:n>`
 	 * - `<builder>`: 构建器的名字，默认为 `TPack`
 	 * - `<version>`: 构建器的版本号
 	 * @param module 当前模块
@@ -2633,25 +2524,18 @@ export interface ResolverRule extends ResolverOptions {
 	type?: "relative" | "node"
 	/**
 	 * 在解析模块路径之前的回调函数
-	 * @param moduleName 要解析的模块名
-	 * @param query 附加的查询参数
-	 * @param file 当前地址所在的模块
-	 * @param context 构建的上下文对象
+	 * @param dependency 要解析的依赖对象
+	 * @param containingModule 当前地址所在的模块
 	 * @param builder 当前的构建器对象
-	 * @returns 返回实际用于解析的模块名
 	 */
-	before?: (moduleName: string, query: null | { [key: string]: string }, module: Module, builder: Builder) => string
+	before?: (dependency: Dependency, containingModule: Module, builder: Builder) => void
 	/**
 	 * 在解析模块路径之后的回调函数
-	 * @param resolvedPath 已解析的结果
-	 * @param moduleName 要解析的模块名
-	 * @param query 附加的查询参数
-	 * @param file 当前地址所在的模块
-	 * @param context 构建的上下文对象
+	 * @param dependency 要解析的依赖对象
+	 * @param containingModule 当前地址所在的模块
 	 * @param builder 当前的构建器对象
-	 * @returns 返回实际解析后的路径，如果路径不存在则返回空，如果路径不存在且忽略错误则返回 `false`
 	 */
-	after?: (resolvedPath: string | null | false, moduleName: string, query: null | { [key: string]: string }, module: Module, builder: Builder) => string | false
+	after?: (dependency: Dependency, containingModule: Module, builder: Builder) => void
 }
 
 /** 表示将外部模块复制到项目中的规则 */
@@ -2676,10 +2560,10 @@ export interface ExternalModuleRule {
 	 * - `<dir>`: 模块所在文件夹的相对路径
 	 * - `<name>`:模块的文件名（不含文件夹和扩展名部分）
 	 * - `<ext>`: 模块的扩展名（含点）
-	 * - `<md5>`: 模块内容的 MD5 串（小写），默认截取前 6 位，如果要截取前 n 位，使用 `<md5:n>`
-	 * - `<sha1>`: 模块内容的 SHA-1 串（小写），默认截取前 6 位，如果要截取前 n 位，使用 `<sha1:n>`
+	 * - `<md5>`: 模块内容的 MD5 串（小写），默认截取前 8 位，如果要截取前 n 位，使用 `<md5:n>`
+	 * - `<sha1>`: 模块内容的 SHA-1 串（小写），默认截取前 8 位，如果要截取前 n 位，使用 `<sha1:n>`
 	 * - `<date>`: 当前时间，默认为用户本地可读格式，如果要自定义格式，使用如 `<date:yyyyMMdd>`
-	 * - `<random>`: 随机整数，默认为 6 位，如果要自定义为 n  位，使用如 `<rand:n>`
+	 * - `<random>`: 随机整数，默认为 8 位，如果要自定义为 n  位，使用如 `<rand:n>`
 	 * - `<builder>`: 构建器的名字，默认为 `TPack`
 	 * - `<version>`: 构建器的版本号
 	 * @param module 要复制的外部模块对象
@@ -2746,14 +2630,13 @@ export interface Bundler {
 	 * @param modules 所有入口模块
 	 * @param builder 当前构建器实例
 	 */
-	bundle?(modules: Module[], builder: Builder): void | Promise<void>
+	bundle?(modules: Module[], pathOnly: boolean, builder: Builder): void | Promise<void>
 	/**
 	 * 生成指定的模块
-	 * @param module 要解析的模块
-	 * @param containingModule 最终包含的模块
+	 * @param module 要生成的模块
 	 * @param builder 当前构建器实例
 	 */
-	generate(module: Module, containingModule: Module, builder: Builder): void | Promise<void>
+	generate(module: Module, builder: Builder): void | Promise<void>
 }
 
 /** 表示一个构建结果 */

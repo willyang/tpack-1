@@ -11,7 +11,7 @@ export default class Sass extends Compiler implements Processor {
 				file: module.originalPath,
 				data: module.content,
 				indentedSyntax: /^\.sass$/i.test(module.originalPath),
-				sourceMap: builder.sourceMap,
+				sourceMap: module.generatesSourceMap,
 				omitSourceMapUrl: true,
 				outFile: module.originalPath,
 				outputStyle: "expanded",
@@ -32,7 +32,7 @@ export default class Sass extends Compiler implements Processor {
 					if (result.map) {
 						const map = JSON.parse(result.map.toString())
 						for (let i = 0; i < map.sources.length; i++) {
-							map.sources[i] = module.resolve(map.sources[i])
+							map.sources[i] = module.resolvePath(map.sources[i])
 						}
 						module.applySourceMap(map)
 					}

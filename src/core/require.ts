@@ -1,5 +1,6 @@
 import Module = require("module")
 import { AsyncQueue } from "../utils/asyncQueue"
+import { defer } from "../utils/misc"
 import { isAbsolutePath } from "../utils/path"
 import { exec } from "../utils/process"
 import { i18n } from "./i18n"
@@ -51,6 +52,11 @@ const installQueue = new AsyncQueue()
 /** 正在安装的模块列表 */
 const installingModules = new Map<string, boolean>()
 
+/** 重新安装的回调函数 */
+const clearInstallingModules = defer(() => {
+	installingModules.clear()
+}, 2000)
+
 /**
  * 安装一个包
  * @param name 要安装的包名
@@ -82,7 +88,7 @@ export async function installPackage(name: string, baseDir: string, installComma
 			}
 			// 安装模块
 			const command = installCommand.replace("<module>", name)
-			const installTask = logger.begin(i18n`Installing module '${name}' via '${command.replace(/\s.*$/s, "")}'`)
+			const installingTask = logger.begin(i18n`Installing module '${name}' via '${command.replace(/\s.*$/s, "")}'`)
 			try {
 				logger.debug(`${baseDir}>${command}`)
 				const result = await exec(command, {
@@ -93,23 +99,25 @@ export async function installPackage(name: string, baseDir: string, installComma
 						NODE_ENV: null!
 					}
 				})
-				if (result.stderr) {
-					logger.log(result.stderr)
-				}
-				if (result.stdout) {
-					logger.log(result.stdout)
-				}
 				const success = result.exitCode === 0
 				installingModules.set(name, success)
+				if (success) {
+					logger.debug(`${result.stderr || ""}\n${result.stdout || ""}`.trim())
+				} else {
+					logger.error({
+						message: i18n`Cannot install module '${name}', try to run '${command}' manually and retry`,
+						detail: `${result.stderr || ""}\n${result.stdout || ""}`.trim()
+					})
+				}
 				return success
 			} finally {
-				logger.end(installTask)
+				logger.end(installingTask)
 			}
 		})
 	} finally {
 		// 如果已安装当前期间所有模块，则下次可继续安装同名模块
 		if (installQueue.isEmpty) {
-			installingModules.clear()
+			clearInstallingModules()
 		}
 	}
 }

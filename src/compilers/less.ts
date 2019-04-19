@@ -18,7 +18,7 @@ export default class Less extends Compiler implements Processor {
 		try {
 			const result = await less.render(module.content, {
 				filename: module.originalPath,
-				sourceMap: builder.sourceMap ? {} : undefined,
+				sourceMap: module.generatesSourceMap ? {} : undefined,
 				paths: [builder.rootDir],
 				...options
 			})

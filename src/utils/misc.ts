@@ -33,6 +33,23 @@ export function insertSorted<T>(sortedArray: T[], item: T, comparer: (x: T, y: T
 }
 
 /**
+ * 创建一个新函数，调用该函数后会延时调用原函数，如果在延时等待期间有新的调用，则重新开始计时
+ * @param func 要调用的原函数
+ * @param timeout 延时的毫秒数
+ * @example document.onscroll = defer(() => console.log("延时执行"), 100)
+ */
+export function defer<T extends Function>(func: T, timeout = 0) {
+	let timer: ReturnType<typeof setTimeout> | undefined
+	return function (this: any, ...args: any[]) {
+		if (timer) clearTimeout(timer)
+		timer = setTimeout(() => {
+			timer = undefined
+			func.apply(this, args)
+		}, timeout)
+	} as Function as T
+}
+
+/**
  * 编码正则表达式的特殊字符
  * @param pattern 要编码的正则表达式模式
  */

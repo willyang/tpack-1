@@ -114,12 +114,12 @@ export class Matcher {
 		const result: string[] = []
 		outer: for (const pattern of this.patterns) {
 			const base = pattern.base
-			for (let j = 0; j < result.length; j++) {
-				if (containsPath(result[j], base, ignoreCase)) {
+			for (let i = 0; i < result.length; i++) {
+				if (containsPath(result[i], base, ignoreCase)) {
 					continue outer
 				}
-				if (containsPath(base, result[j], ignoreCase)) {
-					result[j] = base
+				if (containsPath(base, result[i], ignoreCase)) {
+					result[i] = base
 					continue outer
 				}
 			}

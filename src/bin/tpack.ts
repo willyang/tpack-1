@@ -165,6 +165,12 @@ async function main() {
 				}
 			}
 		},
+		"--check": {
+			description: "Build all files, but do not write to disk",
+			apply(options: BuilderOptions) {
+				options.noWrite = true
+			}
+		},
 
 		"--filter": {
 			group: "Build Options",
@@ -195,12 +201,6 @@ async function main() {
 			description: "Do not clean the output directory before build",
 			apply(options: BuilderOptions) {
 				options.clean = false
-			}
-		},
-		"--no-emit": {
-			description: "Build all files, but do not write to disk",
-			apply(options: BuilderOptions) {
-				options.noEmit = true
 			}
 		},
 		"--no-path-check": {
@@ -238,7 +238,7 @@ async function main() {
 				loggerOptions.logLevel = LogLevel.silent
 			}
 		},
-		"--error-only": {
+		"--errors-only": {
 			description: "Print errors only",
 			apply(options: BuilderOptions) {
 				const loggerOptions = options.logger || (options.logger = {})
@@ -421,11 +421,11 @@ async function main() {
 
 	// 解析配置文件
 	const configFile = searchFile(args["--config"] ? [args["--config"] as string] : [".js", ...Object.keys(extensions)].map(ext => `tpack.config${ext}`))
-	let tasks: ReturnType<typeof loadConfigFile>
+	let tasks: any
 	try {
-		tasks = loadConfigFile(configFile || require.resolve("../../configs/tpack.config.default.js"), !args["--no-es-module"])
+		tasks = await loadConfigFile(configFile || require.resolve("../../configs/tpack.config.default.js"), !args["--no-es-module"]) || {}
 	} catch (e) {
-		console.error(`Error loading '${configFile}': ${e.stack}`)
+		console.error(i18n`Error loading '${configFile}': ${e.stack}`)
 		process.exitCode = -8
 		return
 	}

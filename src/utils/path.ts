@@ -62,7 +62,15 @@ export function getDir(path: string) {
  * @example setDir("/root/goo/foo.txt", "/user", "/root") // "/user/goo/foo.txt"
  */
 export function setDir(path: string, value: string, base?: string) {
-	path = join(value, base ? relative(base, path) : basename(path))
+	if (base) {
+		base = relative(base, path)
+		if (isAbsolutePath(base) || base.startsWith(".." + sep)) {
+			return path
+		}
+	} else {
+		base = basename(path)
+	}
+	path = join(value, base)
 	return sep === "/" || isAbsolutePath(path) ? path : path.split(sep).join("/")
 }
 
@@ -187,6 +195,26 @@ export function containsPath(parent: string, child: string, ignoreCase = isCaseI
 		parent += sep
 	}
 	return child.startsWith(parent)
+}
+
+/**
+ * 获取两个路径中最深的路径
+ * @param path1 要处理的第一个路径
+ * @param path2 要处理的第二个路径
+ * @param ignoreCase 是否忽略路径的大小写
+ * @returns 返回 `path1` 或 `path2`，如果没有公共部分则返回空
+ */
+export function deepestPath(path1: string | null, path2: string | null, ignoreCase = isCaseInsensitive) {
+	if (path1 == null || path2 == null) {
+		return null
+	}
+	if (containsPath(path1, path2, ignoreCase)) {
+		return path2
+	}
+	if (containsPath(path2, path1, ignoreCase)) {
+		return path1
+	}
+	return null
 }
 
 /**

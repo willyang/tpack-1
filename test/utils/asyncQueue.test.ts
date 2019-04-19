@@ -3,17 +3,17 @@ import * as asyncQueue from "../../src/utils/asyncQueue"
 
 export namespace asyncQueueTest {
 
-	export async function runTest() {
+	export async function thenTest() {
 		let value = 1
 		const q = new asyncQueue.AsyncQueue()
-		assert.strictEqual(await q.run(async () => {
+		assert.strictEqual(await q.then(async () => {
 			await sleep(2)
 			return ++value
 		}), 2)
-		assert.deepStrictEqual(await Promise.all([q.run(async () => {
+		assert.deepStrictEqual(await Promise.all([q.then(async () => {
 			await sleep(2)
 			return ++value
-		}), q.run(async () => {
+		}), q.then(async () => {
 			await sleep(1)
 			return ++value
 		})]), [3, 4])
