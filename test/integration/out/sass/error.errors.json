@@ -1,0 +1,11 @@
+[
+  {
+    "source": "Sass",
+    "message": "Undefined variable: \"$undefined\".",
+    "fileName": "sass/error.scss",
+    "line": 1,
+    "column": 8,
+    "content": ".error {\r\n\tcolor: $undefined; // $undefined is undefiend\r\n}",
+    "type": "error"
+  }
+]

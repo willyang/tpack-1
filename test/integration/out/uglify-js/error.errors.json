@@ -1,0 +1,11 @@
+[
+  {
+    "source": "UglifyJS",
+    "message": "Unexpected token: punc «;»",
+    "line": 1,
+    "column": 8,
+    "fileName": "uglify-js/error.js",
+    "content": "var a = 1\r\nvar b = ;\r\nfunction a(c) {\r\n\tvar b = undefined;\r\n\treturn b;\r\n}",
+    "type": "error"
+  }
+]

@@ -1,0 +1,11 @@
+[
+  {
+    "source": "Stylus",
+    "message": "expected \"indent\", got \"outdent\"",
+    "fileName": "stylus/error.styl",
+    "line": 2,
+    "column": 0,
+    "content": ".error {\r\n\twidth: 10px ^ 2px\r\n}",
+    "type": "error"
+  }
+]

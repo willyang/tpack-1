@@ -1,0 +1,12 @@
+[
+  {
+    "source": "Less",
+    "message": "variable @undefined is undefined",
+    "fileName": "less/error.less",
+    "index": 17,
+    "line": 1,
+    "column": 8,
+    "content": ".error {\r\n\tcolor: @undefined; // @undefined is undefiend\r\n}",
+    "type": "error"
+  }
+]

@@ -1,0 +1,9 @@
+{
+  "name": "tpack-integration-test",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "clean-css": "^4.2.1",
+    "html-minifier": "^4.0.0"
+  }
+}

@@ -1,0 +1,11 @@
+[
+  {
+    "source": "CleanCSS",
+    "message": "Missing '}'",
+    "fileName": "cleancss/error.css",
+    "line": 1,
+    "column": 33,
+    "content": ".error {\r\n\tcolor: red /* Missing } here. */",
+    "type": "warning"
+  }
+]
