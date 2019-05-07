@@ -1,111 +1,152 @@
 /**
- * 表示控制台颜色
- * @see https://en.wikipedia.org/wiki/ANSI_escape_code
+ * 为字符串添加 ANSI 加粗控制字符
+ * @param content 要处理的字符串
  */
-export const enum ConsoleColor {
+export function bold(content: string) {
+	return `\x1b[1m${content}\x1b[22m`
+}
+
+/**
+ * 为字符串添加 ANSI 颜色控制字符
+ * @param content 要处理的字符串
+ * @param color 要添加的颜色
+ */
+export function color(content: string, color: ANSIColor) {
+	return `\x1b[${color}m${content}\x1b[39m`
+}
+
+/**
+ * 为字符串添加 ANSI 背景色控制字符
+ * @param content 要处理的字符串
+ * @param color 要添加的背景色
+ */
+export function backgroundColor(content: string, color: ANSIColor) {
+	return `\x1b[${color + 10}m${content}\x1b[49m`
+}
+
+/**
+ * 表示 ANSI 颜色代码
+ * @see https://en.wikipedia.org/wiki/ANSI_escape_code#Colors
+ */
+export const enum ANSIColor {
 	/** 黑色 */
 	black = 30,
-	/** 红色 */
+	/** 深红色 */
 	red = 31,
 	/** 绿色 */
 	green = 32,
-	/** 黄色 */
+	/** 深黄色 */
 	yellow = 33,
-	/** 蓝色 */
+	/** 深蓝色 */
 	blue = 34,
 	/** 紫色 */
 	magenta = 35,
-	/** 靛色 */
+	/** 蓝绿色 */
 	cyan = 36,
-	/** 白色 */
+	/** 浅灰色 */
 	white = 37,
 
-	/** 亮黑色（即灰色） */
+	/** 深灰色 */
 	brightBlack = 90,
-	/** 亮红色 */
+	/** 红色 */
 	brightRed = 91,
-	/** 亮绿色（即青色） */
+	/** 青色 */
 	brightGreen = 92,
-	/** 亮黄色 */
+	/** 黄色 */
 	brightYellow = 93,
-	/** 亮蓝色 */
+	/** 蓝色 */
 	brightBlue = 94,
-	/** 亮紫色 */
+	/** 桃红色 */
 	brightMagenta = 95,
-	/** 亮靛色 */
+	/** 浅蓝色 */
 	brightCyan = 96,
-	/** 亮白色 */
-	brightWhite = 97,
-
-	/** 黑色 */
-	backgroundBlack = 40,
-	/** 背景红色 */
-	backgroundRed = 41,
-	/** 背景绿色 */
-	backgroundGreen = 42,
-	/** 背景黄色 */
-	backgroundYellow = 44,
-	/** 背景蓝色 */
-	backgroundBlue = 44,
-	/** 背景紫色 */
-	backgroundMagenta = 45,
-	/** 背景靛色 */
-	backgroundCyan = 46,
-	/** 背景白色 */
-	backgroundWhite = 47,
-
-	/** 背景亮黑色（即灰色） */
-	backgroundBrightBlack = 100,
-	/** 背景亮红色 */
-	backgroundBrightRed = 101,
-	/** 背景亮绿色（即青色） */
-	backgroundBrightGreen = 102,
-	/** 背景亮黄色 */
-	backgroundBrightYellow = 103,
-	/** 背景亮蓝色 */
-	backgroundBrightBlue = 104,
-	/** 背景亮紫色 */
-	backgroundBrightMagenta = 105,
-	/** 背景亮靛色 */
-	backgroundBrightCyan = 106,
-	/** 背景亮白色 */
-	backgroundBrightWhite = 107,
+	/** 白色 */
+	brightWhite = 97
 }
 
 /**
- * 添加颜色 ANSI 控制字符
- * @param content 要处理的内容
- * @param color 要添加的颜色
+ * 匹配 ANSI 转义字符的正则表达式
+ * @description 除了 ANSI 标准（ECMA 48），此正则还匹配了 ANSI 扩展链接（可含中文）
+ * @see https://github.com/nodejs/node/blob/master/lib/internal/readline.js
+ * @see https://github.com/chalk/ansi-regex/blob/master/index.js
  */
-export function color(content: string, color: ConsoleColor) {
-	return `\u001b[${color}m${content}\u001b[39m`
-}
+const ansiCodeRegExp = /[\x1b\u009b](?:[[()#;?]*(?:(?:\d{1,4}(?:;\d{0,4})*)?[\dA-PR-TZcf-ntqry=><~]|][^\u0007\x1b\u009b]*\u0007))/g
 
 /**
- * 添加加粗 ANSI 控制字符
- * @param content 要处理的内容
+ * 删除字符串中的所有 ANSI 转义字符
+ * @param content 要处理的字符串
  */
-export function bold(content: string) {
-	return `\u001b[1m${content}\u001b[0m`
+export function removeANSICodes(content: string) {
+	return content.replace(ansiCodeRegExp, "")
 }
 
-/** 匹配 ANSI 控制字符的正则表达式 */
-const ansiRegExp = /[\u001b\u009b][[\]()#;?]*(?:(?:(?:[a-zA-Z\d]*(?:;[a-zA-Z\d]*)*)?\u0007)|(?:(?:\d{1,4}(?:;\d{0,4})*)?[\dA-PR-TZcf-ntqry=<>~]))/g
-
 /**
- * 删除所有 ANSI 控制字符
- * @param content 要处理的内容
+ * 如果字符串超出最大宽度，则将中间部分替换为省略号
+ * @param content 要处理的字符串（不支持换行）
+ * @param ellipsis 要使用的省略号
+ * @param maxWidth 允许显示的最大宽度（一般地，西文字母宽度为 1，中文文字宽度为 2）
  */
-export function removeAnsiCodes(content: string) {
-	return content.replace(ansiRegExp, "")
+export function truncateString(content: string, ellipsis = "...", maxWidth = process.stdout.columns || Infinity) {
+	// 减去省略号本身的宽度
+	const ellipsisWidth = getStringWidth(ellipsis)
+	if (maxWidth <= ellipsisWidth) {
+		ellipsis = ellipsis.substr(0, maxWidth - 1)
+	}
+	maxWidth -= ellipsisWidth
+	// 统计所有 ANSI 控制符的位置，用于检索
+	// 数组的内容为 [开始位置1, 结束位置1, 开始位置2, ...]
+	const ansiCodes: number[] = []
+	content.replace(ansiCodeRegExp, (source: string, index: number) => {
+		ansiCodes.push(index, index + source.length - 1)
+		return ""
+	})
+	// 左右逐字排版，超出最大宽度后终止
+	let left = 0
+	let right = content.length - 1
+	let controlLeft = 0
+	let controlRight = ansiCodes.length - 1
+	while (left < right) {
+		// 排版左边一个字符
+		while (controlLeft < ansiCodes.length && ansiCodes[controlLeft] === left) {
+			left = ansiCodes[controlLeft + 1] + 1
+			controlLeft += 2
+		}
+		maxWidth -= getCharWidth(content.charCodeAt(left))
+		if (maxWidth <= 0) {
+			break
+		}
+		left++
+		// 排版右边一个字符
+		while (controlRight >= 0 && ansiCodes[controlRight] === right) {
+			right = ansiCodes[controlRight - 1] - 1
+			controlRight -= 2
+		}
+		maxWidth -= getCharWidth(content.charCodeAt(right))
+		if (maxWidth <= 0) {
+			break
+		}
+		right--
+	}
+	// 如果已排版所有字符串说明不需要追加省略号
+	// 如果被截断的字符刚好等于省略号的长度，则使用原字符
+	if (left >= right || right - left < ellipsisWidth && getStringWidth(content.substring(left, right)) < ellipsisWidth) {
+		return content
+	}
+	// 保留被截断的控制符
+	let ansiString = ""
+	for (; controlLeft < controlRight; controlLeft += 2) {
+		ansiString += content.substring(ansiCodes[controlLeft], ansiCodes[controlLeft + 1] + 1)
+	}
+	// 截断并排版
+	return `${content.substr(0, left)}${ansiString}${ellipsis}${content.substr(right + 1)}`
 }
 
 /**
- * 如果内容超过最大宽度，则拆成新行
- * @param content 要处理的内容
+ * 将字符串按最大宽度拆成多行
+ * @param content 要处理的字符串（不支持换行）
  * @param indent 新行的缩进空格数
- * @param maxWidth 允许布局的最大宽度（一般地，西文字母宽度为 1，中文文字宽度为 2）
- * @returns 返回一个数组，每项各代表一行的内容
+ * @param maxWidth 允许显示的最大宽度（一般地，西文字母宽度为 1，中文文字宽度为 2）
+ * @returns 返回由每一行的内容组成的数组
  */
 export function splitString(content: string, indent = 0, maxWidth = process.stdout.columns || Infinity) {
 	const lines: string[] = []
@@ -113,48 +154,40 @@ export function splitString(content: string, indent = 0, maxWidth = process.stdo
 	let leftBound = 0
 	let currentWidth = 0
 	for (let i = 0; i < content.length;) {
-		// 跳过 ANSI 控制字符
-		const ch = content.charCodeAt(i)
-		if (ch === 0x001b || ch === 0x009b) {
-			const match = new RegExp(`^${ansiRegExp.source}`).exec(content.slice(i))
+		// 跳过 ANSI 转义字符
+		const char = content.charCodeAt(i)
+		if (char === 0x001b || char === 0x009b) {
+			const match = new RegExp(`^${ansiCodeRegExp.source}`).exec(content.slice(i))
 			if (match) {
 				leftBound = i += match[0].length
 				continue
 			}
 		}
-		// 跳过换行符
-		if (ch === 10 || ch === 13) {
-			if (left < i) lines.push(`${lines.length ? " ".repeat(indent) : ""}${content.slice(left, i)}`)
-			if (ch === 13 && content.charCodeAt(i + 1) === 10) i++
-			leftBound = left = ++i
-			currentWidth = indent
-			continue
-		}
 		// 排版当前字符
-		if ((currentWidth += getCharWidth(ch)) < maxWidth) {
+		if ((currentWidth += getCharWidth(char)) < maxWidth) {
 			i++
 			continue
 		}
-		// 达到边界
+		// 已超出最大宽度，在空格处折行
 		let skipSpace = false
 		if (i === leftBound) {
-			// 列宽太小已不能容纳一个字符，强制布局一个字符
+			// 当前字符是第一个字符，强制布局该字符
 			i++
 		} else {
-			// 尽量在空格处断词，计算实际截断的位置
+			// 尽量在空格处折行，计算实际截断的位置
 			const rightBound = i
 			while (i > leftBound && content.charCodeAt(i) !== 32 /* */) {
 				i--
 			}
-			// 找不到空格，强制拆分最后一个字符
+			// 找不到空格，强制拆分当前字符
 			if (i === leftBound) {
 				i = rightBound
 			} else {
 				skipSpace = true
 			}
 		}
+		// 添加折行之前的内容
 		lines.push(`${lines.length ? " ".repeat(indent) : ""}${content.slice(left, i)}`)
-		// 跳过空格
 		if (skipSpace) {
 			i++
 		}
@@ -166,69 +199,10 @@ export function splitString(content: string, indent = 0, maxWidth = process.stdo
 }
 
 /**
- * 如果内容超过最大宽度，则将中间部分替换为省略号
- * @param content 要处理的内容（不支持换行）
- * @param ellipsis 使用的省略号
- * @param maxWidth 允许布局的最大宽度（一般地，西文字母宽度为 1，中文文字宽度为 2）
- */
-export function truncateString(content: string, ellipsis = "...", maxWidth = process.stdout.columns || Infinity) {
-	// 删除省略号本身的宽度
-	const ellipsisWidth = getStringWidth(ellipsis)
-	if (maxWidth <= ellipsisWidth) {
-		ellipsis = ellipsis.substr(0, maxWidth - 1)
-	}
-	maxWidth -= ellipsisWidth
-	// 统计所有控制符的位置，删除时保留所有控制符
-	const ansiChars: number[] = []; // [开始位置1, 结束位置1, 开始位置2, ...]
-	content.replace(ansiRegExp, (source: string, index: number) => {
-		ansiChars.push(index, index + source.length - 1)
-		return ""
-	})
-	// 左右逐字排版，超出宽度限制后停止
-	let left = 0
-	let right = content.length - 1
-	let controlLeft = 0
-	let controlRight = ansiChars.length - 1
-	while (left < right) {
-		// 排版左边一个字符
-		while (controlLeft < ansiChars.length && ansiChars[controlLeft] === left) {
-			left = ansiChars[controlLeft + 1] + 1
-			controlLeft += 2
-		}
-		maxWidth -= getCharWidth(content.charCodeAt(left))
-		if (maxWidth <= 0) {
-			break
-		}
-		left++
-		// 排版右边一个字符
-		while (controlRight >= 0 && ansiChars[controlRight] === right) {
-			right = ansiChars[controlRight - 1] - 1
-			controlRight -= 2
-		}
-		maxWidth -= getCharWidth(content.charCodeAt(right))
-		if (maxWidth <= 0) {
-			break
-		}
-		right--
-	}
-	// 如果已排版所有字符串说明不需要追加省略号
-	if (left >= right) {
-		return content
-	}
-	// 保留被截断的控制符
-	let ansiString = ""
-	for (; controlLeft < controlRight; controlLeft += 2) {
-		ansiString += content.substring(ansiChars[controlLeft], ansiChars[controlLeft + 1] + 1)
-	}
-	// 截断并排版
-	return `${content.substr(0, left)}${ansiString}${ellipsis}${content.substr(right + 1)}`
-}
-
-/**
- * 格式化一个列表
- * @param items 所有列表项
- * @param space 列表每项之间间隔的空格数
- * @param maxWidth 允许布局的最大宽度（一般地，西文字母宽度为 1，中文文字宽度为 2）
+ * 格式化一个列表，将列表每项按水平方向平铺，超出最大宽度后换行，并保证每项的首字符对齐
+ * @param items 要格式化的所有列表项
+ * @param space 列表中每项间隔的空格数
+ * @param maxWidth 允许显示的最大宽度（一般地，西文字母宽度为 1，中文文字宽度为 2）
  */
 export function formatList(items: string[], space = 2, maxWidth = process.stdout.columns || Infinity) {
 	if (!items.length) {
@@ -247,11 +221,11 @@ export function formatList(items: string[], space = 2, maxWidth = process.stdout
 /**
  * 格式化一个表格
  * @param rows 所有行组成的数组，数组的每一项是当前行所有列组成的数组
- * @param columnsAlign 指示每列的对齐方式
- * @param headerSeperator 用于区分首行的分隔符
- * @param columnSeperator 每列之间的分隔符
- * @param ellipsis 如果表格总宽不够则压缩内容，压缩使用的省略号
- * @param maxWidth 允许布局的最大宽度（一般地，西文字母宽度为 1，中文文字宽度为 2）
+ * @param columnsAlign 每列的对齐方式
+ * @param columnSeperator 列之间的分隔符
+ * @param headerSeperator 首行和表格主体的分隔字符，字符将根据表格实际宽度复制，如果为空则不显示
+ * @param ellipsis 在表格超出最大宽度并且截断内容时使用的省略号
+ * @param maxWidth 允许显示的最大宽度（一般地，西文字母宽度为 1，中文文字宽度为 2）
  */
 export function formatTable(rows: string[][], columnsAlign?: ("left" | "center" | "right")[], columnSeperator = "  ", headerSeperator = "", ellipsis = "...", maxWidth = process.stdout.columns || Infinity) {
 	// 计算列宽
@@ -264,81 +238,78 @@ export function formatTable(rows: string[][], columnsAlign?: ("left" | "center" 
 	if (!columnsWidth.length) {
 		return ""
 	}
-	// 如果列超出则重新分配
+	// 如果表格总体宽度超出则重新分配
 	if (Number.isFinite(maxWidth)) {
 		const seperatorWidth = getStringWidth(columnSeperator)
-		let delta = (columnsWidth.length === 1 ? columnsWidth[0] : columnsWidth.reduce((x, y) => x + seperatorWidth + y)) - maxWidth
-		if (delta >= 0) {
-			for (let i = columnsWidth.length - 1; i >= 0; i--) {
-				if (columnsWidth[i] > delta) {
+		let exceedWidth = (columnsWidth.length === 1 ? columnsWidth[0] : columnsWidth.reduce((x, y) => x + seperatorWidth + y)) - maxWidth + 1
+		if (exceedWidth > 0) {
+			const availableWidth = columnsWidth.reduce((x, y) => x + (y > 5 ? y - 5 : 0), 0)
+			for (let i = columnsWidth.length - 1; i >= 0 && exceedWidth > 0; i--) {
+				// 只有列宽超过 5 时才能压缩
+				if (columnsWidth[i] > 5) {
+					const delta = Math.ceil((columnsWidth[i] - 5) * exceedWidth / availableWidth)
+					exceedWidth -= delta
 					columnsWidth[i] -= delta
-					break
-				} else if (columnsWidth[i] > 5) {
-					delta -= columnsWidth[i] - 5
-					columnsWidth[i] = 5
 				}
 			}
 		}
 	}
-	let log = ""
+	let result = ""
 	for (let i = 0; i < rows.length; i++) {
 		if (i) {
-			log += "\n"
+			result += "\n"
 		}
 		const row = rows[i]
 		for (let j = 0; j < row.length; j++) {
-			if (j) {
-				log += columnSeperator
-			}
-			const columnWidth = columnsWidth[j] || 0
+			if (j) result += columnSeperator
+			const columnWidth = columnsWidth[j]
 			let cell = row[j]
 			let actualWidth = getStringWidth(cell)
 			if (actualWidth > columnWidth) {
-				cell = truncateString(cell, ellipsis, columnWidth)
+				cell = truncateString(cell, ellipsis, columnWidth + 1)
 				actualWidth = columnWidth
 			}
+			// 插入空格使列对齐
 			switch (columnsAlign && columnsAlign[j]) {
 				case "right":
-					log += " ".repeat(columnWidth - actualWidth)
-					log += cell
+					result += " ".repeat(columnWidth - actualWidth)
+					result += cell
 					break
 				case "center":
-					log += " ".repeat(Math.floor((columnWidth - actualWidth) / 2))
-					log += cell
-					log += " ".repeat(Math.ceil((columnWidth - actualWidth) / 2))
+					result += " ".repeat(Math.floor((columnWidth - actualWidth) / 2))
+					result += cell
+					result += " ".repeat(Math.ceil((columnWidth - actualWidth) / 2))
 					break
 				default:
-					log += cell
-					log += " ".repeat(columnWidth - actualWidth)
+					result += cell
+					result += " ".repeat(columnWidth - actualWidth)
 					break
 			}
 		}
 		// 首行分隔符
 		if (headerSeperator && i === 0) {
-			log += "\n"
+			result += "\n"
 			for (let j = 0; j < columnsWidth.length; j++) {
-				if (j) {
-					log += columnSeperator
-				}
-				log += headerSeperator.repeat(columnsWidth[i] || 0)
+				if (j) result += columnSeperator
+				result += headerSeperator.repeat(columnsWidth[j])
 			}
 		}
 	}
-	return log
+	return result
 }
 
 /**
  * 格式化一个代码片段
- * @param content 要格式化的内容（不支持 ANSI 控制字符）
- * @param line 开始行号（从 0 开始）
- * @param column 开始列号（从 0 开始）
- * @param endLine 结束行号（从 0 开始）
- * @param endColumn 结束列号（从 0 开始）
+ * @param content 要格式化的代码片段（不支持 ANSI 转义字符）
+ * @param line 突出显示的开始行号（从 0 开始），超出最大行数后只显示该行及相邻行
+ * @param column 突出显示的开始列号（从 0 开始），超出最大宽度后只显示该列及相邻列
+ * @param endLine 突出显示的结束行号（从 0 开始），如果未提供则不突出显示区间
+ * @param endColumn 突出显示的结束列号（从 0 开始），如果未提供则不突出显示区间
  * @param showLine 是否显示行号
  * @param showColumn 是否显示列指示器
- * @param tab 用于代替 TAB 的字符串
- * @param maxWidth 允许布局的最大宽度（一般地，西文字母宽度为 1，中文文字宽度为 2）
- * @param maxHeight 允许布局的最大行数，如果等于 0 则显示所有行
+ * @param tab 用于代替制表符的字符串
+ * @param maxWidth 允许显示的最大宽度（一般地，西文字母宽度为 1，中文文字宽度为 2）
+ * @param maxHeight 允许显示的最大行数，如果为 0 则显示所有行
  */
 export function formatCodeFrame(content: string, line?: number, column?: number, endLine?: number, endColumn?: number, showLine = true, showColumn = true, tab = "    ", maxWidth = process.stdout.columns || Infinity, maxHeight = 3) {
 	// 计算要显示的开始行号
@@ -437,111 +408,140 @@ export function formatCodeFrame(content: string, line?: number, column?: number,
 }
 
 /**
- * 将 ANSI 控制字符转为等效的 HTML 代码
- * @param content 要转换的内容
- * @param colors 自定义各颜色的替代色
- * @param context 如果需要串联两段 HTML，则需要在两次转换时传入相同的引用
+ * 将 ANSI 转义字符转为等效的 HTML 代码
+ * @param content 要转换的字符串
+ * @param colors 自定义各颜色的替代色，键为内置颜色名或 `#` 开头的颜色值，值为替换后的颜色，内置颜色名如下：
+ * 
+ * ANSI 颜色代码 | HTML 颜色值
+ * -------------|----------------
+ * 30           | `black`
+ * 31           | `darkred`
+ * 32           | `darkgreen`
+ * 33           | `olive`
+ * 34           | `navy`
+ * 35           | `darkmagenta`
+ * 36           | `darkcyan`
+ * 37           | `sliver`
+ * 90           | `gray`
+ * 91           | `red`
+ * 92           | `green`
+ * 93           | `yellow`
+ * 94           | `blue`
+ * 95           | `magenta`
+ * 96           | `cyan`
+ * 97           | `white`
+ * 
+ * @param style 设置初始的 CSS 样式，键为样式名，值为样式值，转换结束后对象会被更新为最新的样式
  */
-export function ansiToHTML(content: string, colors?: { [key: string]: string }, context: { [key: string]: string } = {}) {
-	let currentStyle = ""
-	content = content.replace(ansiRegExp, all => {
-		if (all.startsWith("\u001b[") && all.endsWith("m")) {
-			// 自定义颜色
-			const match = /^\u001b\[([34])8;(?:5;(\d+)|2;(\d+);(\d+);(\d+))/.exec(all)
-			if (match) {
-				const color = match[2] ? codeToRGB(parseInt(match[2])) : `#${(parseInt(match[3]) << 16 | parseInt(match[4]) << 8 | parseInt(match[5])).toString(16).padStart(6, "0")}`
-				context[match[1] === '4' ? "background-color" : "color"] = colors && colors[color] || color
-			} else {
-				all.replace(/\d+/g, ansiCode => {
+export function ansiToHTML(content: string, colors?: { [key: string]: string }, style: { [key: string]: string } = {}) {
+	let currentCSSText = ""
+	content = content.replace(ansiCodeRegExp, all => {
+		if (/^(?:\x1b\[|\u009b).*m/s.test(all)) {
+			all.replace(/([34])8;(?:5;(\d+)|2;(\d+);(\d+);(\d+))|(\d+)/g, (_, extendedColor, colorCode, r, g, b, ansiCode) => {
+				if (extendedColor) {
+					// 匹配扩展颜色指令：`<ESC>[38`, `<ESC>[48`
+					const color = colorCode ? codeToRGB(+colorCode) : `#${(r << 16 | +g << 8 | +b).toString(16).padStart(6, "0")}`
+					style[extendedColor === '4' ? "background-color" : "color"] = colors && colors[color] || color
+				} else {
+					// 内置颜色指令
 					const code = parseInt(ansiCode)
 					if (code >= 30 && code <= 37) {
 						const color = codeToRGB(code - 30)
-						context["color"] = colors && colors[color] || color
+						style["color"] = colors && colors[color] || color
 					} else if (code >= 40 && code <= 47) {
 						const color = codeToRGB(code - 40)
-						context["background-color"] = colors && colors[color] || color
+						style["background-color"] = colors && colors[color] || color
 					} else if (code >= 90 && code <= 97) {
 						const color = codeToRGB(code - 90 + 8)
-						context["color"] = colors && colors[color] || color
+						style["color"] = colors && colors[color] || color
 					} else if (code >= 100 && code <= 107) {
 						const color = codeToRGB(code - 100 + 8)
-						context["background-color"] = colors && colors[color] || color
+						style["background-color"] = colors && colors[color] || color
 					} else {
 						switch (code) {
 							case 0:
-								for (let key in context) {
-									delete context[key]
+								for (const key in style) {
+									delete style[key]
 								}
 								break
 							case 1:
-								context["font-weight"] = "bold"
+								style["font-weight"] = "bold"
 								break
 							case 2:
-								context["font-weight"] = "100"
+								style["font-weight"] = "100"
 								break
 							case 3:
-								context["font-style"] = "italic"
+								style["font-style"] = "italic"
 								break
 							case 4:
-								context["text-decoration"] = "underline"
+								style["text-decoration"] = "underline"
 								break
 							case 7:
-								[context["background-color"], context["color"]] = [context["color"], context["background-color"]]
+								[style["background-color"], style["color"]] = [style["color"], style["background-color"]]
+								if (style["color"] === undefined) delete style["color"]
+								if (style["background-color"] === undefined) delete style["background-color"]
 								break
 							case 8:
-								context["display"] = "none"
+								style["display"] = "none"
 								break
 							case 9:
-								context["text-decoration"] = "line-through"
+								style["text-decoration"] = "line-through"
 								break
 							case 21:
 							case 22:
-								delete context["font-weight"]
+								delete style["font-weight"]
 								break
 							case 23:
-								delete context["font-style"]
+								delete style["font-style"]
 								break
 							case 24:
-								delete context["text-decoration"]
+							case 29:
+							case 55:
+								delete style["text-decoration"]
+								break
+							case 28:
+								delete style["display"]
 								break
 							case 39:
-								delete context["color"]
+								delete style["color"]
 								break
 							case 49:
-								delete context["background-color"]
+								delete style["background-color"]
 								break
 							case 53:
-								context["text-decoration"] = "overline"
+								style["text-decoration"] = "overline"
 								break
 						}
-						return ""
 					}
-					return ""
-				})
+				}
+				return ""
+			})
+			// 应用新样式
+			const oldCSSText = currentCSSText
+			currentCSSText = ""
+			for (const key in style) {
+				if (currentCSSText) currentCSSText += `; `
+				currentCSSText += `${key}: ${style[key]}`
 			}
-			let style = ""
-			for (const key in context) {
-				if (style) style += `; `
-				style += `${key}: ${context[key]}`
-			}
-			if (currentStyle === style) {
+			if (oldCSSText === currentCSSText) {
 				return ""
 			}
-			const oldStyle = currentStyle
-			currentStyle = style
-			return `${oldStyle ? `</span>` : ""}${style ? `<span style="${style}">` : ""}`
+			return `${oldCSSText ? `</span>` : ""}${currentCSSText ? `<span style="${currentCSSText}">` : ""}`
 
-			/** 计算一个颜色简码对应的实际颜色 */
+			/**
+			 * 计算一个颜色简码对应的实际颜色
+			 * @see https://en.wikipedia.org/wiki/ANSI_escape_code#8-bit
+			 */
 			function codeToRGB(code: number) {
-				// 算法参考 https://en.wikipedia.org/wiki/ANSI_escape_code#8-bit
 				switch (code) {
-					case 1: return "black"
-					case 2: return "darkred"
-					case 3: return "darkgreen"
-					case 4: return "olive"
-					case 5: return "darkblue"
-					case 6: return "darkmagenta"
-					case 7: return "darkcyan"
+					case 0: return "black"
+					case 1: return "darkred"
+					case 2: return "darkgreen"
+					case 3: return "olive"
+					case 4: return "navy"
+					case 5: return "darkmagenta"
+					case 6: return "darkcyan"
+					case 7: return "sliver"
 
 					case 8: return "gray"
 					case 9: return "red"
@@ -550,6 +550,7 @@ export function ansiToHTML(content: string, colors?: { [key: string]: string }, 
 					case 12: return "blue"
 					case 13: return "magenta"
 					case 14: return "cyan"
+					case 15: return "white"
 				}
 				if (code >= 232) {
 					return `#${((code - 232) * 10 + 8).toString(16).padStart(2, "0").repeat(3)}`
@@ -565,61 +566,61 @@ export function ansiToHTML(content: string, colors?: { [key: string]: string }, 
 		}
 		return ""
 	})
-	if (currentStyle) {
+	if (currentCSSText) {
 		content += "</span>"
 	}
 	return content
 }
 
 /**
- * 获取指定字符串的显示宽度
- * @param content 要计算的内容
+ * 获取字符串的显示宽度
+ * @param content 要计算的字符串（不支持换行）
+ * @returns 返回宽度，一般地，西文字母返回 1，中文文字返回 2
  */
 export function getStringWidth(content: string) {
-	content = removeAnsiCodes(content)
-	let result = 0
+	content = removeANSICodes(content).replace(/\p{Emoji_Modifier_Base}\p{Emoji_Modifier}?|\p{Emoji_Presentation}|\p{Emoji}\uFE0F/gu, "  ")
+	let width = 0
 	for (let i = 0; i < content.length; i++) {
-		result += getCharWidth(content.charCodeAt(i))
+		width += getCharWidth(content.charCodeAt(i))
 	}
-	return result
+	return width
 }
 
 /**
- * 获取指定字符的显示宽度
+ * 获取字符的显示宽度
  * @param char 要计算的 Unicode 字符编码
- * @description 一般地，西文字母返回 1，中文文字返回 2
+ * @returns 返回宽度，一般地，西文字母返回 1，中文文字返回 2
  */
 export function getCharWidth(char: number) {
+	// ASCII 字符宽度为 1
 	if (char <= 0x1f || (char >= 0x7f && char <= 0x9f)) {
+		// 制表符按宽度 4 计算
 		if (char === 9 /*\t*/) {
 			return 4
 		}
 		return 1
 	}
 	// 对于 Unicode 代理区（Surrogate）字符（如 Emoji），计算的逻辑比较复杂
-	// 考虑此函数主要用于确保在控制台不换行，因此代理区字符统按宽度 2 处理
-	if (isFullWidthCodePoint(char)) {
-		return 2
-	}
-	return 1
+	// 考虑此函数主要用于确保在显示时不换行，因此代理区字符统按宽度 2 处理
+	return isFullWidthCodePoint(char) ? 2 : 1
 }
 
 /**
  * 判断指定的字符是否是宽字符
  * @param char 要判断的字符编码
- * @see https://github.com/nodejs/io.js/blob/cff7300a578be1b10001f2d967aaedc88aee6402/lib/readline.js#L1369
+ * @see https://github.com/nodejs/node/blob/master/lib/internal/readline.js
+ * @see http://www.unicode.org/Public/UNIDATA/EastAsianWidth.txt
  */
 function isFullWidthCodePoint(char: number) {
-	// http://www.unicode.org/Public/UNIDATA/EastAsianWidth.txt
 	return char >= 0x1100 && (
 		// CJK Unified Ideographs .. Yi Radicals
 		0x4e00 <= char && char <= 0xa4c6 ||
 		// Hangul Jamo
 		char <= 0x115f ||
 		// LEFT-POINTING ANGLE BRACKET
-		0x2329 === char ||
+		char === 0x2329 ||
 		// RIGHT-POINTING ANGLE BRACKET
-		0x232a === char ||
+		char === 0x232a ||
 		// CJK Radicals Supplement .. Enclosed CJK Letters and Months
 		(0x2e80 <= char && char <= 0x3247 && char !== 0x303f) ||
 		// Enclosed CJK Letters and Months .. CJK Unified Ideographs Extension A
@@ -635,8 +636,7 @@ function isFullWidthCodePoint(char: number) {
 		// CJK Compatibility Forms .. Small Form Variants
 		0xfe30 <= char && char <= 0xfe6b ||
 		// Halfwidth and Fullwidth Forms
-		0xff01 <= char && char <= 0xff60 ||
-		0xffe0 <= char && char <= 0xffe6 ||
+		0xff01 <= char && char <= 0xff60 || 0xffe0 <= char && char <= 0xffe6 ||
 		// Kana Supplement
 		0x1b000 <= char && char <= 0x1b001 ||
 		// Enclosed Ideographic Supplement

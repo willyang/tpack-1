@@ -3,21 +3,78 @@ import * as ansi from "../../src/utils/ansi"
 
 export namespace ansiTest {
 
-	export function colorTest() {
-		assert.strictEqual(ansi.color("ABCDEFG", ansi.ConsoleColor.red), "\u001b[31mABCDEFG\u001b[39m")
-	}
-
 	export function boldTest() {
-		assert.strictEqual(ansi.bold("ABCDEFG"), "\u001b[1mABCDEFG\u001b[0m")
+		assert.strictEqual(ansi.bold("bold"), "\u001b[1mbold\u001b[22m")
+
+		assert.strictEqual(ansi.bold(""), "\u001b[1m\u001b[22m")
 	}
 
-	export function removeAnsiCodesTest() {
-		assert.strictEqual(ansi.removeAnsiCodes("ABCDEFG"), "ABCDEFG")
-		assert.strictEqual(ansi.removeAnsiCodes("\u001b[37mABCDEFG\u001b[39m"), "ABCDEFG")
+	export function colorTest() {
+		assert.strictEqual(ansi.color("red", ansi.ANSIColor.red), "\u001b[31mred\u001b[39m")
+
+		assert.strictEqual(ansi.color("", ansi.ANSIColor.red), "\u001b[31m\u001b[39m")
+	}
+
+	export function backgroundColorTest() {
+		assert.strictEqual(ansi.backgroundColor("red", ansi.ANSIColor.red), "\u001b[41mred\u001b[49m")
+
+		assert.strictEqual(ansi.backgroundColor("", ansi.ANSIColor.red), "\u001b[41m\u001b[49m")
+	}
+
+	export function removeANSICodesTest() {
+		assert.strictEqual(ansi.removeANSICodes("\u001b[31mred\u001b[39m"), "red")
+
+		assert.strictEqual(ansi.removeANSICodes("text"), "text")
+		assert.strictEqual(ansi.removeANSICodes("\u001b]2;example\u0007"), "")
+		assert.strictEqual(ansi.removeANSICodes("\u001b]8;;https://github.com\u0007Click\u001b]8;;\u0007"), "Click")
+
+		assert.strictEqual(ansi.removeANSICodes("\u001b]8;;https://中文\u0007Click\u001b]8;;\u0007"), "Click")
+	}
+
+	export function truncateStringTest() {
+		assert.strictEqual(ansi.truncateString("I'm a long long long text", undefined, 10), "I'm...ext")
+		assert.strictEqual(ansi.truncateString("I'm a long long long text", "…", 10), "I'm …text")
+
+		assert.strictEqual(ansi.truncateString("ABCDEFG"), "ABCDEFG")
+		assert.strictEqual(ansi.truncateString("ABCDEFG", undefined, 1), "")
+		assert.strictEqual(ansi.truncateString("ABCDEFG", undefined, 2), ".")
+		assert.strictEqual(ansi.truncateString("ABCDEFG", undefined, 3), "..")
+		assert.strictEqual(ansi.truncateString("ABCDEFG", undefined, 4), "...")
+		assert.strictEqual(ansi.truncateString("ABCDEFG", undefined, 5), "A...")
+		assert.strictEqual(ansi.truncateString("ABCDEFG", undefined, 6), "A...G")
+		assert.strictEqual(ansi.truncateString("ABCDEFG", undefined, 7), "AB...G")
+		assert.strictEqual(ansi.truncateString("ABCDEFG", undefined, 8), "ABCDEFG")
+		assert.strictEqual(ansi.truncateString("ABCDEFG", undefined, 9), "ABCDEFG")
+		assert.strictEqual(ansi.truncateString("ABCDEFG", undefined, 10), "ABCDEFG")
+		assert.strictEqual(ansi.truncateString("ABCDEFG", undefined, 11), "ABCDEFG")
+		assert.strictEqual(ansi.truncateString("ABCDEFG", undefined, 12), "ABCDEFG")
+		assert.strictEqual(ansi.truncateString("ABCDEFG", undefined, 13), "ABCDEFG")
+
+		assert.strictEqual(ansi.truncateString("你A好B世C界D", undefined, 4), "...")
+		assert.strictEqual(ansi.truncateString("你A好B世C界D", undefined, 5), "...")
+		assert.strictEqual(ansi.truncateString("你A好B世C界D", undefined, 6), "你...")
+		assert.strictEqual(ansi.truncateString("你A好B世C界D", undefined, 7), "你...D")
+		assert.strictEqual(ansi.truncateString("你A好B世C界D", undefined, 8), "你A...D")
+		assert.strictEqual(ansi.truncateString("你A好B世C界D", undefined, 9), "你A...D")
+		assert.strictEqual(ansi.truncateString("你A好B世C界D", undefined, 10), "你A...界D")
+		assert.strictEqual(ansi.truncateString("ABCDEFG好", undefined, 8), "AB...好")
+
+		assert.strictEqual(ansi.truncateString("\u001b[37mABCDEFG\u001b[39m", undefined, 6), "\u001b[37mA...G\u001b[39m")
+		assert.strictEqual(ansi.truncateString("\u001b[37mABCDEFG好\u001b[39m", undefined, 8), "\u001b[37mAB...好\u001b[39m")
+		assert.strictEqual(ansi.truncateString("\u001b[37mABCDEFG\u001b[39m", undefined, 13), "\u001b[37mABCDEFG\u001b[39m")
+		assert.strictEqual(ansi.truncateString("\u001b[37m你A好B世C界D", undefined, 4), "\u001b[37m...")
+		assert.strictEqual(ansi.truncateString("你\u001b[37mA好B世C界D", undefined, 5), "\u001b[37m...")
+		assert.strictEqual(ansi.truncateString("你\u001b[37mA好\u001b[39mB世C界D", undefined, 5), "\u001b[37m\u001b[39m...")
+
+		assert.strictEqual(ansi.truncateString("ABCDEFG好", "|", 8), "ABC|G好")
+		assert.strictEqual(ansi.truncateString("ABCDEFG好", "", 8), "ABCFG好")
 	}
 
 	export function splitStringTest() {
-		assert.deepStrictEqual(ansi.splitString("ABCDEFG"), ["ABCDEFG"])
+		assert.deepStrictEqual(ansi.splitString("I love you", undefined, 10), ["I love", "you"])
+		assert.deepStrictEqual(ansi.splitString("I love you", 2, 10), ["I love", "  you"])
+
+		assert.deepStrictEqual(ansi.splitString("A"), ["A"])
 		assert.deepStrictEqual(ansi.splitString("ABCDEFG", 0, 0), ["A", "B", "C", "D", "E", "F", "G"])
 		assert.deepStrictEqual(ansi.splitString("ABCDEFG", 0, 1), ["A", "B", "C", "D", "E", "F", "G"])
 		assert.deepStrictEqual(ansi.splitString("ABCDEFG", 0, 2), ["A", "B", "C", "D", "E", "F", "G"])
@@ -51,60 +108,35 @@ export namespace ansiTest {
 		assert.deepStrictEqual(ansi.splitString("hello world", 0, 8), ["hello", "world"])
 		assert.deepStrictEqual(ansi.splitString("hello world", 0, Infinity), ["hello world"])
 
-		assert.deepStrictEqual(ansi.splitString("hello\nworld", 0, 8), ["hello", "world"])
-		assert.deepStrictEqual(ansi.splitString("hello\nworld", 0, 4), ["hel", "lo", "wor", "ld"])
-		assert.deepStrictEqual(ansi.splitString("hello\nworld", 2, 6), ["hello", "  wor", "  ld"])
-		assert.deepStrictEqual(ansi.splitString("hello\r\nworld", 2, 6), ["hello", "  wor", "  ld"])
-		assert.deepStrictEqual(ansi.splitString("hello\rworld", 2, 6), ["hello", "  wor", "  ld"])
-
-		assert.deepStrictEqual(ansi.splitString("\u001b[37mABCDEFG\u001b[39m", 0, 5), ["\u001b[37mABCD", "EFG\u001b[39m"])
-
 		assert.deepStrictEqual(ansi.splitString("hello    world", 2, 6), ["hello", "    ", "  wor", "  ld"])
 		assert.deepStrictEqual(ansi.splitString("hello    world", 0, 5), ["hell", "o   ", "worl", "d"])
-	}
 
-	export function truncateStringTest() {
-		assert.strictEqual(ansi.truncateString("ABCDEFG"), "ABCDEFG")
-		assert.strictEqual(ansi.truncateString("ABCDEFG", undefined, 1), "")
-		assert.strictEqual(ansi.truncateString("ABCDEFG", undefined, 2), ".")
-		assert.strictEqual(ansi.truncateString("ABCDEFG", undefined, 3), "..")
-		assert.strictEqual(ansi.truncateString("ABCDEFG", undefined, 4), "...")
-		assert.strictEqual(ansi.truncateString("ABCDEFG", undefined, 5), "A...")
-		assert.strictEqual(ansi.truncateString("ABCDEFG", undefined, 6), "A...G")
-		assert.strictEqual(ansi.truncateString("ABCDEFG", undefined, 7), "AB...G")
-		assert.strictEqual(ansi.truncateString("ABCDEFG", undefined, 8), "AB...FG")
-		assert.strictEqual(ansi.truncateString("ABCDEFG", undefined, 9), "ABC...FG")
-		assert.strictEqual(ansi.truncateString("ABCDEFG", undefined, 10), "ABCDEFG")
-		assert.strictEqual(ansi.truncateString("ABCDEFG", undefined, 11), "ABCDEFG")
-		assert.strictEqual(ansi.truncateString("ABCDEFG", undefined, 12), "ABCDEFG")
-		assert.strictEqual(ansi.truncateString("ABCDEFG", undefined, 13), "ABCDEFG")
-
-		assert.strictEqual(ansi.truncateString("你A好B世C界D", undefined, 4), "...")
-		assert.strictEqual(ansi.truncateString("你A好B世C界D", undefined, 5), "...")
-		assert.strictEqual(ansi.truncateString("你A好B世C界D", undefined, 6), "你...")
-		assert.strictEqual(ansi.truncateString("你A好B世C界D", undefined, 7), "你...D")
-		assert.strictEqual(ansi.truncateString("你A好B世C界D", undefined, 8), "你A...D")
-		assert.strictEqual(ansi.truncateString("你A好B世C界D", undefined, 9), "你A...D")
-		assert.strictEqual(ansi.truncateString("你A好B世C界D", undefined, 10), "你A...界D")
-		assert.strictEqual(ansi.truncateString("ABCDEFG好", undefined, 8), "AB...好")
-
-		assert.strictEqual(ansi.truncateString("\u001b[37mABCDEFG\u001b[39m", undefined, 6), "\u001b[37mA...G\u001b[39m")
-		assert.strictEqual(ansi.truncateString("\u001b[37mABCDEFG好\u001b[39m", undefined, 8), "\u001b[37mAB...好\u001b[39m")
-		assert.strictEqual(ansi.truncateString("\u001b[37mABCDEFG\u001b[39m", undefined, 13), "\u001b[37mABCDEFG\u001b[39m")
-		assert.strictEqual(ansi.truncateString("\u001b[37m你A好B世C界D", undefined, 4), "\u001b[37m...")
-		assert.strictEqual(ansi.truncateString("你\u001b[37mA好B世C界D", undefined, 5), "\u001b[37m...")
-		assert.strictEqual(ansi.truncateString("你\u001b[37mA好\u001b[39mB世C界D", undefined, 5), "\u001b[37m\u001b[39m...")
-
-		assert.strictEqual(ansi.truncateString("ABCDEFG好", "|", 8), "ABC|G好")
-		assert.strictEqual(ansi.truncateString("ABCDEFG好", "", 8), "ABCFG好")
+		assert.deepStrictEqual(ansi.splitString("\u001b[37mABCDEFG\u001b[39m", 0, 5), ["\u001b[37mABCD", "EFG\u001b[39m"])
 	}
 
 	export function formatListTest() {
+		assert.strictEqual(ansi.formatList(["item1", "item2", "item3"], undefined, 12), "item1  item2\nitem3")
+
+		assert.strictEqual(ansi.formatList([]), "")
 		assert.strictEqual(ansi.formatList([], 2, 20), "")
 		assert.strictEqual(ansi.formatList(["xx", "yy"], 2, 20), "xx  yy")
+		assert.strictEqual(ansi.formatList(["xx", "yy"], 2, 0), "xx\nyy")
+		assert.strictEqual(ansi.formatList(["xx", "yy", "zz", "ff"], 2, 7), "xx  yy\nzz  ff")
+		assert.strictEqual(ansi.formatList(["xxx", "yy", "zz", "ff"], 2, 8), "xxx  yy\nzz   ff")
 	}
 
 	export function formatTableTest() {
+		assert.strictEqual(ansi.formatTable([["A", "B", "C"], ["ABC", "BBC", "CBC"]], ["left", "center", "right"], " | ", "-", undefined, Infinity), [
+			"A   |  B  |   C",
+			"--- | --- | ---",
+			"ABC | BBC | CBC"
+		].join("\n"))
+
+		assert.strictEqual(ansi.formatTable([]), "")
+		assert.strictEqual(ansi.formatTable([["1"], ["2"]]), [
+			"1",
+			"2"
+		].join("\n"))
 		assert.strictEqual(ansi.formatTable([["A", "B", "C"], ["AB", "BB", "CB"]]), [
 			"A   B   C ",
 			"AB  BB  CB"
@@ -117,12 +149,46 @@ export namespace ansiTest {
 			"A     B      C",
 			"ABC  BBCD  CBC"
 		].join("\n"))
+
+		assert.strictEqual(ansi.formatTable([["123456", "123456", "123456"], ["123456", "123456", "123456"]], undefined, undefined, undefined, undefined, 22), [
+			"123456  123456  1...6",
+			"123456  123456  1...6"
+		].join("\n"))
+
+		assert.strictEqual(ansi.formatTable([["123456", "123456", "123456"], ["123456", "123456", "123456"]], undefined, undefined, undefined, undefined, 20), [
+			"1...6  1...6  1...6",
+			"1...6  1...6  1...6"
+		].join("\n"))
+
+		assert.strictEqual(ansi.formatTable([["123456", "123456", "12345678900000zc"], ["123456", "123456", "123456"]], undefined, undefined, undefined, undefined, 23), [
+			"123456  1...6  12...zc",
+			"123456  1...6  123456 "
+		].join("\n"))
+
+		assert.strictEqual(ansi.formatTable([["1234", "123456", "12345678900000zc"], ["1234", "123456", "123456"]], undefined, undefined, undefined, undefined, 21), [
+			"1234  123456  12...c",
+			"1234  123456  123456"
+		].join("\n"))
+
+
+		assert.strictEqual(ansi.formatTable([["1234", "123456", "12345678900000zc"], ["1234"], ["1234", "123456", "123456"]], undefined, undefined, undefined, undefined, 21), [
+			"1234  123456  12...c",
+			"1234",
+			"1234  123456  123456"
+		].join("\n"))
 	}
 
 	export function formatCodeFrameTest() {
-		assert.strictEqual(ansi.formatCodeFrame("A", 0, undefined, undefined, undefined, false, false, undefined, Infinity, Infinity), "A")
+		assert.strictEqual(ansi.formatCodeFrame("A\r\nB\nC", 1, 0, undefined, undefined, true, true, undefined, 15, 0), [
+			"   1 | A",
+			" > 2 | B",
+			"     | ^",
+			"   3 | C"
+		].join('\n'))
+
+		assert.strictEqual(ansi.formatCodeFrame("A", 0, undefined, undefined, undefined, false, false, undefined, undefined, undefined), "A")
 		assert.strictEqual(ansi.formatCodeFrame("\u001b\u009b", 0, undefined, undefined, undefined, false, false, undefined, Infinity, Infinity), "␛␛")
-		assert.strictEqual(ansi.formatCodeFrame("A", 0, 0, undefined, undefined, true, true, undefined, 15, 0), [
+		assert.strictEqual(ansi.formatCodeFrame("A", 0, 0, undefined, undefined, undefined, undefined, undefined, 15, 0), [
 			' > 1 | A',
 			'     | ^'
 		].join('\n'))
@@ -131,12 +197,6 @@ export namespace ansiTest {
 			" > 2 |     B",
 			"     |     ^",
 			"   3 |     C"
-		].join('\n'))
-		assert.strictEqual(ansi.formatCodeFrame("A\r\nB\nC", 1, 0, undefined, undefined, true, true, undefined, 15, 0), [
-			"   1 | A",
-			" > 2 | B",
-			"     | ^",
-			"   3 | C"
 		].join('\n'))
 		assert.strictEqual(ansi.formatCodeFrame("A\rBCDEF\nC", 1, 2, undefined, undefined, true, true, undefined, 15, 0), [
 			"   1 | A",
@@ -217,19 +277,102 @@ export namespace ansiTest {
 
 	export function ansiToHTMLTest() {
 		assert.strictEqual(ansi.ansiToHTML("xy"), "xy")
-		assert.strictEqual(ansi.ansiToHTML("\u001b[1mxy"), `<span style="font-weight: bold">xy</span>`)
+		assert.strictEqual(ansi.ansiToHTML("\u001b[1mxy\u001b[21mc"), `<span style="font-weight: bold">xy</span>c`)
+		assert.strictEqual(ansi.ansiToHTML("\u001b[1mxy\u001b[22mc"), `<span style="font-weight: bold">xy</span>c`)
+		assert.strictEqual(ansi.ansiToHTML("\u001b[2mxy\u001b[21mc"), `<span style="font-weight: 100">xy</span>c`)
+		assert.strictEqual(ansi.ansiToHTML("\u001b[3mxy\u001b[23mc"), `<span style="font-style: italic">xy</span>c`)
+		assert.strictEqual(ansi.ansiToHTML("\u001b[4mxy\u001b[24mc"), `<span style="text-decoration: underline">xy</span>c`)
+		assert.strictEqual(ansi.ansiToHTML("\u001b[30mxy\u001b[7mc"), `<span style="color: black">xy</span><span style="background-color: black">c</span>`)
+		assert.strictEqual(ansi.ansiToHTML("\u001b[30mxy\u001b[7mc", { "black": "#000" }), `<span style="color: #000">xy</span><span style="background-color: #000">c</span>`)
+		assert.strictEqual(ansi.ansiToHTML("\u001b[40mxy\u001b[7mc"), `<span style="background-color: black">xy</span><span style="color: black">c</span>`)
+		assert.strictEqual(ansi.ansiToHTML("\u001b[40mxy\u001b[7mc", { "black": "#000" }), `<span style="background-color: #000">xy</span><span style="color: #000">c</span>`)
+		assert.strictEqual(ansi.ansiToHTML("\u001b[30m\u001b[107mx\u001b[7mc"), `<span style="color: black"></span><span style="color: black; background-color: white">x</span><span style="color: white; background-color: black">c</span>`)
+		assert.strictEqual(ansi.ansiToHTML("\u001b[90mxy\u001b[39mc", {}), `<span style="color: gray">xy</span>c`)
+		assert.strictEqual(ansi.ansiToHTML("\u001b[40mxy\u001b[49mc"), `<span style="background-color: black">xy</span>c`)
+		assert.strictEqual(ansi.ansiToHTML("\u001b[40mxy\u001b[49mc", {}), `<span style="background-color: black">xy</span>c`)
+		assert.strictEqual(ansi.ansiToHTML("\u001b[100mxy\u001b[49mc", {}), `<span style="background-color: gray">xy</span>c`)
+		assert.strictEqual(ansi.ansiToHTML("\u001b[0mxy\u001b[7mc"), `xyc`)
+		assert.strictEqual(ansi.ansiToHTML("\u001b[8mxy\u001b[28mc"), `<span style="display: none">xy</span>c`)
+		assert.strictEqual(ansi.ansiToHTML("\u001b[9mxy\u001b[29mc"), `<span style="text-decoration: line-through">xy</span>c`)
+		assert.strictEqual(ansi.ansiToHTML("\u001b[53mxy\u001b[55mc"), `<span style="text-decoration: overline">xy</span>c`)
+		assert.strictEqual(ansi.ansiToHTML("\u001b[0mx"), `x`)
+
+		assert.strictEqual(ansi.ansiToHTML("\u001b[30mC\u001b[0m\u001b[40mB"), `<span style="color: black">C</span><span style="background-color: black">B</span>`)
+		assert.strictEqual(ansi.ansiToHTML("\u001b[31mC\u001b[0m\u001b[41mB"), `<span style="color: darkred">C</span><span style="background-color: darkred">B</span>`)
+		assert.strictEqual(ansi.ansiToHTML("\u001b[32mC\u001b[0m\u001b[42mB"), `<span style="color: darkgreen">C</span><span style="background-color: darkgreen">B</span>`)
+		assert.strictEqual(ansi.ansiToHTML("\u001b[33mC\u001b[0m\u001b[43mB"), `<span style="color: olive">C</span><span style="background-color: olive">B</span>`)
+		assert.strictEqual(ansi.ansiToHTML("\u001b[34mC\u001b[0m\u001b[44mB"), `<span style="color: navy">C</span><span style="background-color: navy">B</span>`)
+		assert.strictEqual(ansi.ansiToHTML("\u001b[35mC\u001b[0m\u001b[45mB"), `<span style="color: darkmagenta">C</span><span style="background-color: darkmagenta">B</span>`)
+		assert.strictEqual(ansi.ansiToHTML("\u001b[36mC\u001b[0m\u001b[46mB"), `<span style="color: darkcyan">C</span><span style="background-color: darkcyan">B</span>`)
+		assert.strictEqual(ansi.ansiToHTML("\u001b[37mC\u001b[0m\u001b[47mB"), `<span style="color: sliver">C</span><span style="background-color: sliver">B</span>`)
+
+		assert.strictEqual(ansi.ansiToHTML("\u001b[90mC\u001b[0m\u001b[100mB"), `<span style="color: gray">C</span><span style="background-color: gray">B</span>`)
+		assert.strictEqual(ansi.ansiToHTML("\u001b[91mC\u001b[0m\u001b[101mB"), `<span style="color: red">C</span><span style="background-color: red">B</span>`)
+		assert.strictEqual(ansi.ansiToHTML("\u001b[92mC\u001b[0m\u001b[102mB"), `<span style="color: green">C</span><span style="background-color: green">B</span>`)
+		assert.strictEqual(ansi.ansiToHTML("\u001b[93mC\u001b[0m\u001b[103mB"), `<span style="color: yellow">C</span><span style="background-color: yellow">B</span>`)
+		assert.strictEqual(ansi.ansiToHTML("\u001b[94mC\u001b[0m\u001b[104mB"), `<span style="color: blue">C</span><span style="background-color: blue">B</span>`)
+		assert.strictEqual(ansi.ansiToHTML("\u001b[95mC\u001b[0m\u001b[105mB"), `<span style="color: magenta">C</span><span style="background-color: magenta">B</span>`)
+		assert.strictEqual(ansi.ansiToHTML("\u001b[96mC\u001b[0m\u001b[106mB"), `<span style="color: cyan">C</span><span style="background-color: cyan">B</span>`)
+		assert.strictEqual(ansi.ansiToHTML("\u001b[97mC\u001b[0m\u001b[107mB"), `<span style="color: white">C</span><span style="background-color: white">B</span>`)
+
+		assert.strictEqual(ansi.ansiToHTML("\u001b[107mC\u001b[97mB"), `<span style="background-color: white">C</span><span style="background-color: white; color: white">B</span>`)
+		assert.strictEqual(ansi.ansiToHTML("\u001b[107mC\u001b[107mB"), `<span style="background-color: white">CB</span>`)
+
+		assert.strictEqual(ansi.ansiToHTML("\u001b[38;5;196mhello"), `<span style="color: #ff0000">hello</span>`)
+		assert.strictEqual(ansi.ansiToHTML("\u001b[38;5;234mhello"), `<span style="color: #1c1c1c">hello</span>`)
+		assert.strictEqual(ansi.ansiToHTML("\u001b[38;5;250mhello"), `<span style="color: #bcbcbc">hello</span>`)
+		assert.strictEqual(ansi.ansiToHTML("\u001b[38;5;250;48;5;250mhello"), `<span style="color: #bcbcbc; background-color: #bcbcbc">hello</span>`)
+		assert.strictEqual(ansi.ansiToHTML("\u001b[38;5;171;1mfoo"), `<span style="color: #d75fff; font-weight: bold">foo</span>`)
+		assert.strictEqual(ansi.ansiToHTML("\u001b[38;5;16;1mfoo"), `<span style="color: #000000; font-weight: bold">foo</span>`)
+
+		assert.strictEqual(ansi.ansiToHTML("\u001b[48;2;210;60;114mhello"), `<span style="background-color: #d23c72">hello</span>`)
+		assert.strictEqual(ansi.ansiToHTML("\u001b[48;2;155;42;45mhello", {}), `<span style="background-color: #9b2a2d">hello</span>`)
+		assert.strictEqual(ansi.ansiToHTML("\u001b[48;2;155;42;45mhello"), `<span style="background-color: #9b2a2d">hello</span>`)
+
+		assert.strictEqual(ansi.ansiToHTML("\u001b[30mblack\u001b[39mdefault"), `<span style="color: black">black</span>default`)
+		assert.strictEqual(ansi.ansiToHTML("\u001b[25oops forgot the 'm'"), `oops forgot the 'm'`)
 	}
 
 	export function getStringWidthTest() {
 		assert.strictEqual(ansi.getStringWidth("xy"), 2)
+
 		assert.strictEqual(ansi.getStringWidth(""), 0)
 		assert.strictEqual(ansi.getStringWidth("中文"), 4)
 		assert.strictEqual(ansi.getStringWidth("中y"), 3)
+
+		assert.strictEqual(ansi.getStringWidth("abcde"), 5)
+		assert.strictEqual(ansi.getStringWidth("古池や"), 6)
+		assert.strictEqual(ansi.getStringWidth("あいうabc"), 9)
+		assert.strictEqual(ansi.getStringWidth("ノード.js"), 9)
+		assert.strictEqual(ansi.getStringWidth("你好"), 4)
+		assert.strictEqual(ansi.getStringWidth("안녕하세요"), 10)
+		assert.strictEqual(ansi.getStringWidth("A\uD83C\uDE00BC"), 5, "surrogate")
+		assert.strictEqual(ansi.getStringWidth("\u001B[31m\u001B[39m"), 0)
+		assert.strictEqual(ansi.getStringWidth("\u001B]8https://github.com\u0007Click\u001B]8\u0007"), 5)
+		assert.strictEqual(ansi.getStringWidth("\u{231A}"), 2, "⌚ default emoji presentation character (Emoji_Presentation)")
+		assert.strictEqual(ansi.getStringWidth("\u{2194}\u{FE0F}"), 2, "↔️ default text presentation character rendered as emoji")
+		assert.strictEqual(ansi.getStringWidth("\u{1F469}"), 2, "👩 emoji modifier base (Emoji_Modifier_Base)")
+		assert.strictEqual(ansi.getStringWidth("\u{1F469}\u{1F3FF}"), 2, "👩🏿 emoji modifier base followed by a modifier")
+		assert.strictEqual(ansi.getStringWidth("\u{231A}\u{231A}"), 4, "⌚ default emoji presentation character (Emoji_Presentation)")
+
+		assert.strictEqual(ansi.getStringWidth("\0"), 1)
+		assert.strictEqual(ansi.getStringWidth("x\u0300"), 2)
+
+		assert.strictEqual(ansi.getStringWidth("\ufaff"), 2)
+		assert.strictEqual(ansi.getStringWidth("\ufe19"), 2)
+		assert.strictEqual(ansi.getStringWidth("\ufe6b"), 2)
+		assert.strictEqual(ansi.getStringWidth("\uff60"), 2)
+		assert.strictEqual(ansi.getStringWidth("\uffe6"), 2)
 	}
 
 	export function getCharWidthTest() {
 		assert.strictEqual(ansi.getCharWidth("x".charCodeAt(0)), 1)
 		assert.strictEqual(ansi.getCharWidth("中".charCodeAt(0)), 2)
+		assert.strictEqual(ansi.getCharWidth("中".charCodeAt(0)), 2)
+
+		assert.strictEqual(ansi.getCharWidth(0x1b001), 2)
+		assert.strictEqual(ansi.getCharWidth(0x1f251), 2)
+		assert.strictEqual(ansi.getCharWidth(0x3fffd), 2)
 	}
 
 }

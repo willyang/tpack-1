@@ -6,6 +6,8 @@ export namespace processTest {
 	export async function execTest() {
 		assert.strictEqual((await proc.exec("echo 1")).stdout.trim(), "1")
 		assert.strictEqual((await proc.exec("exit 1")).exitCode, 1)
+
+		assert.strictEqual((await proc.exec("command-not-exists")).exitCode, 1)
 	}
 
 }

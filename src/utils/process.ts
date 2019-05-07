@@ -4,17 +4,15 @@ import { ChildProcess, spawn, SpawnOptions } from "child_process"
  * 执行一个命令
  * @param command 要执行的命令
  * @param options 附加选项
- * @returns 返回命令的执行结果，包含退出码和输出等信息
+ * @returns 返回命令的执行结果，包含退出码和标准流输出等信息
  */
-export function exec(command: string, options: SpawnOptions & { args?: ReadonlyArray<string> } = {}) {
+export function exec(command: string, options: SpawnOptions & { args?: readonly string[] } = {}) {
 	return new Promise<ExecResult>((resolve, reject) => {
 		if (options.shell === undefined) {
 			options.shell = true
 		}
 		const cp = spawn(command, options.args || [], options)
-		const result = {
-			process: cp
-		} as ExecResult
+		const result = { process: cp } as ExecResult
 		if (cp.stdout) {
 			result.stdout = ""
 			cp.stdout.setEncoding("utf8").on("data", d => {
@@ -54,7 +52,7 @@ export interface ExecResult {
  * @param app 使用的浏览器程序，默认由操作系统决定
  * @param appArgs 浏览器程序的附加启动参数
  */
-export function open(url: string, wait = false, app?: string, appArgs?: string[]) {
+export function open(url: string, wait = false, app?: string, appArgs?: readonly string[]) {
 	let cmd: string
 	const args: string[] = []
 	let options: SpawnOptions | undefined

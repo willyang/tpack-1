@@ -1,4 +1,4 @@
-import { bold, color, ConsoleColor, truncateString, formatCodeFrame, removeAnsiCodes } from "../utils/ansi"
+import { ANSIColor, bold, color, formatCodeFrame, removeANSICodes, truncateString } from "../utils/ansi"
 import { clear, hideCursor, showCursor } from "../utils/commandLine"
 import { formatDate } from "../utils/misc"
 import { relativePath, resolvePath } from "../utils/path"
@@ -26,8 +26,6 @@ export class Logger {
 		this.showSpinner = options.showSpinner !== undefined ? options.showSpinner : process.stdout.isTTY === true
 		this.spinnerFrames = options.spinnerFrames || (process.platform === "win32" && /^\d\./.test(require("os").release()) ? ["-", "\\", "|", "/"] : ["⠋ ", "⠙ ", "⠹ ", "⠸ ", "⠼ ", "⠴ ", "⠦ ", "⠧ ", "⠇ ", "⠏ "])
 		this.spinnerInterval = options.spinnerInterval || 90
-		// @ts-ignore
-		this.spinnerColor = options.spinnerColor !== undefined ? typeof options.spinnerColor === "string" ? ConsoleColor[options.spinnerColor] : options.spinnerColor : ConsoleColor.brightCyan
 		this.successIcon = options.successIcon !== undefined ? options.successIcon : process.platform === "win32" ? "✔ " : "√ "
 		this.warningIcon = options.warningIcon !== undefined ? options.warningIcon : process.platform === "win32" ? "⚠ " : "⚠️ "
 		this.errorIcon = options.errorIcon !== undefined ? options.errorIcon : process.platform === "win32" ? "✘ " : "× "
@@ -108,8 +106,9 @@ export class Logger {
 	 * 判断是否忽略指定日志的回调函数
 	 * @param log 日志对象
 	 * @param logLevel 日志等级
+	 * @param persistent 是否在清屏时保留此日志
 	 */
-	ignore?: (log: LogEntry, logLevel: LogLevel) => boolean
+	ignore?: (log: LogEntry, logLevel: LogLevel, persistent?: boolean) => boolean
 
 	/** 获取或设置当前错误或警告的编号 */
 	errorOrWarningCounter = 0
@@ -133,28 +132,28 @@ export class Logger {
 	 * @param persistent 是否在清屏时保留此日志
 	 */
 	protected write(log: string | Error | LogEntry, level: LogLevel, persistent?: boolean) {
-		if (level < this.logLevel || this.ignore && this.ignore(typeof log === "string" ? { message: log } : log instanceof Error ? { error: log, message: log.message, showErrorStack: true } : log, level)) {
+		if (level < this.logLevel || this.ignore && this.ignore(typeof log === "string" ? { message: log } : log instanceof Error ? { error: log, message: log.message, showStack: true } : log, level, persistent)) {
 			return
 		}
 		const content = this.formatLog(log)
 		if (persistent) {
-			const persistentLog = `${color(formatDate(new Date(), "[HH:mm:ss]"), ConsoleColor.brightBlack)} ${level === LogLevel.error ? this.errorIcon : level === LogLevel.warning ? this.warningIcon : level === LogLevel.fatal ? this.fatalIcon : level === LogLevel.success ? this.successIcon : ""}${content}`
+			const persistentLog = `${color(formatDate(new Date(), "[HH:mm:ss]"), ANSIColor.brightBlack)} ${level === LogLevel.error ? this.errorIcon : level === LogLevel.warning ? this.warningIcon : level === LogLevel.fatal ? this.fatalIcon : level === LogLevel.success ? this.successIcon : ""}${content}`
 			this._persistentLog = this._persistentLog != undefined ? `${this._persistentLog}\n${persistentLog}` : persistentLog
 			return console.info(persistentLog)
 		}
 		switch (level) {
 			case LogLevel.error:
-				return console.error(`${color(`${++this.errorOrWarningCounter}) ${this.errorIcon}`, ConsoleColor.brightRed)}${content}`)
+				return console.error(`${color(`${++this.errorOrWarningCounter}) ${this.errorIcon}`, ANSIColor.brightRed)}${content}`)
 			case LogLevel.warning:
-				return console.warn(`${color(`${++this.errorOrWarningCounter}) ${this.warningIcon}`, ConsoleColor.brightYellow)}${content}`)
+				return console.warn(`${color(`${++this.errorOrWarningCounter}) ${this.warningIcon}`, ANSIColor.brightYellow)}${content}`)
 			case LogLevel.info:
-				return console.info(`${color(formatDate(new Date(), "[HH:mm:ss]"), ConsoleColor.brightBlack)} ${content}`)
+				return console.info(`${color(formatDate(new Date(), "[HH:mm:ss]"), ANSIColor.brightBlack)} ${content}`)
 			case LogLevel.fatal:
-				return console.error(`${color(formatDate(new Date(), "[HH:mm:ss]"), ConsoleColor.brightBlack)} ${color(this.fatalIcon, ConsoleColor.brightRed)}${content}`)
+				return console.error(`${color(formatDate(new Date(), "[HH:mm:ss]"), ANSIColor.brightBlack)} ${color(this.fatalIcon, ANSIColor.brightRed)}${content}`)
 			case LogLevel.success:
-				return console.info(`${color(formatDate(new Date(), "[HH:mm:ss]"), ConsoleColor.brightBlack)} ${color(this.successIcon, ConsoleColor.brightGreen)}${content}`)
+				return console.info(`${color(formatDate(new Date(), "[HH:mm:ss]"), ANSIColor.brightBlack)} ${color(this.successIcon, ANSIColor.brightGreen)}${content}`)
 			case LogLevel.debug:
-				return console.debug(`${color(formatDate(new Date(), "[HH:mm:ss]"), ConsoleColor.brightBlack)} ${content}`)
+				return console.debug(`${color(formatDate(new Date(), "[HH:mm:ss]"), ANSIColor.brightBlack)} ${content}`)
 			default:
 				return console.log(content)
 		}
@@ -179,7 +178,7 @@ export class Logger {
 		if (typeof log === "string") {
 			content = log
 		} else if (log instanceof Error) {
-			content = `${color(`[${log.name}]`, ConsoleColor.brightRed)}${log.message}\n${color(this.formatErrorStack(log.stack || ""), ConsoleColor.brightBlack)} `
+			content = `${color(`[${log.name}]`, ANSIColor.brightRed)}${log.message}\n${color(this.formatStack(log.stack || ""), ANSIColor.brightBlack)} `
 		} else {
 			content = ""
 			// 添加路径
@@ -191,43 +190,46 @@ export class Logger {
 						loc += `,${log.column + 1}`
 					}
 					loc += ")"
-					content += color(loc, ConsoleColor.brightBlack)
+					content += color(loc, ANSIColor.brightBlack)
 				}
-				if (log.message != undefined || log.error) {
-					content += color(": ", ConsoleColor.brightBlack)
+				if (log.message != undefined || log.source || log.error != undefined) {
+					content += color(": ", ANSIColor.brightBlack)
 				}
 			}
 			// 添加名字
 			if (log.source) {
-				content += color(`[${log.source}]`, ConsoleColor.brightCyan)
+				content += color(`[${log.source}]`, ANSIColor.brightCyan)
 			}
 			// 添加信息
 			if (log.message != undefined) {
 				content += log.message
-			} else if (log.error) {
-				content += `${color(`[${log.error.name}]`, ConsoleColor.brightRed)}${log.error.message || ""}`
+			} else if (log.error != undefined) {
+				if (log.error.name) {
+					content += color(`[${log.error.name}]`, ANSIColor.brightRed)
+				}
+				content += log.error.message || log.error.toString()
 			}
 			// 添加详情
 			if (log.detail) {
-				content += `\n${color(log.detail, ConsoleColor.brightBlack)}`
+				content += `\n${color(log.detail, ANSIColor.brightBlack)}`
 			}
 			// 添加源代码片段
 			if (this.codeFrame) {
 				if (log.codeFrame) {
-					content += `\n\n${color(log.codeFrame, ConsoleColor.brightBlack)}\n`
+					content += `\n\n${color(log.codeFrame, ANSIColor.brightBlack)}\n`
 				} else if (log.codeFrame == undefined && log.content && log.line !== undefined) {
-					content += `\n\n${color(formatCodeFrame(log.content, log.line, log.column, log.endLine, log.endColumn, this.codeFrameOptions.showLine, this.codeFrameOptions.showColumn, this.codeFrameOptions.tab, this.codeFrameOptions.maxWidth, this.codeFrameOptions.maxHeight), ConsoleColor.brightBlack)}\n`
+					content += `\n\n${color(formatCodeFrame(log.content, log.line, log.column, log.endLine, log.endColumn, this.codeFrameOptions.showLine, this.codeFrameOptions.showColumn, this.codeFrameOptions.tab, this.codeFrameOptions.maxWidth, this.codeFrameOptions.maxHeight), ANSIColor.brightBlack)}\n`
 				}
 			}
 			// 添加堆栈信息
-			const stack = (this.logLevel === LogLevel.debug || log.showErrorStack) && log.error && this.formatErrorStack(log.error.stack || "")
+			const stack = (this.logLevel === LogLevel.debug || log.showStack) && log.error && this.formatStack(log.error.stack || "")
 			if (stack) {
-				content += `\n${color(stack, ConsoleColor.brightBlack)}`
+				content += `\n\n${color(stack, ANSIColor.brightBlack)}\n`
 			}
 		}
 		// 去除颜色信息
 		if (!colors) {
-			content = removeAnsiCodes(content)
+			content = removeANSICodes(content)
 		}
 		return content
 	}
@@ -236,15 +238,8 @@ export class Logger {
 	 * 格式化指定的错误堆栈信息
 	 * @param stack 要格式化的错误堆栈信息
 	 */
-	formatErrorStack(stack: string) {
-		const stacks: string[] = []
-		stack.replace(/^    at (.*)$/gm, (stack, line) => {
-			if (!/\((?:(?:(?:node|(?:internal\/[\w/]*)?\w+)\.js:\d+:\d+)|native)\)$/.test(line)) {
-				stacks.push(color(`    @ ${line}`, ConsoleColor.brightBlack))
-			}
-			return stack
-		})
-		return stacks.join("\n")
+	formatStack(stack: string) {
+		return stack.split("\n").filter(line => line.startsWith("    at ") && !/\((?:(?:(?:node|(?:internal\/[\w/]*)?\w+|.*[\\/]v8-compile-cache[\\/]v8-compile-cache)\.js:\d+:\d+)|native)\)$/.test(line)).join("\n")
 	}
 
 	/** 判断或设置是否显示完整绝对路径 */
@@ -260,7 +255,7 @@ export class Logger {
 	formatPath(path: string) {
 		if (!this.showFullPath) {
 			const relative = relativePath(this.baseDir, path)
-			if (!relative.startsWith("../")) {
+			if (relative && !relative.startsWith("../")) {
 				return relative
 			}
 		}
@@ -282,12 +277,15 @@ export class Logger {
 		if (all) {
 			delete this._persistentLog
 		}
-		if (this.persistent) {
+		if (this.persistent || this.logLevel === LogLevel.silent) {
 			return
 		}
 		clear()
 		if (this._persistentLog) {
 			console.info(this._persistentLog)
+		}
+		if (this._spinnerTimer) {
+			this._updateSpinner()
 		}
 	}
 
@@ -310,31 +308,29 @@ export class Logger {
 
 	/**
 	 * 记录将开始执行指定的任务
-	 * @param log 要记录的日志或错误对象
+	 * @param taskName 要执行的任务名
+	 * @param detail 要执行的任务详情
 	 * @returns 返回任务编号
 	 */
-	begin(log: string | Error | LogEntry) {
+	begin(taskName: string, detail?: string) {
 		// 不显示进度条则不记录信息
 		if (!this.showSpinner) {
 			return null
 		}
-		// 更新进度条
-		const content = this.formatLog(log)
+		// 更新进度
+		const content = `${color(taskName, ANSIColor.brightCyan)}${detail ? " " + detail : ""}`
 		if (this.logLevel === LogLevel.debug) {
-			this.debug(`${color(i18n`Starting`, ConsoleColor.brightMagenta)} ${content}`)
+			this.debug(`${color(i18n`Starting`, ANSIColor.brightMagenta)} ${content}`)
 		} else {
 			this.startSpinner(content)
 		}
 		// 添加节点
 		const taskId: Logger["_lastTask"] = { content }
 		if (this._lastTask) {
-			this._lastTask.next = taskId
 			taskId.prev = this._lastTask
-			this._lastTask = taskId
-		} else {
-			this._lastTask = taskId
+			this._lastTask.next = taskId
 		}
-		return taskId
+		return this._lastTask = taskId
 	}
 
 	/**
@@ -345,26 +341,29 @@ export class Logger {
 		if (!taskId) {
 			return
 		}
-		// 删除当前节点
-		const { prev, next } = taskId
-		if (prev) {
-			prev.next = next
-		}
-		const isLastTask = this._lastTask === taskId
-		if (next) {
-			next.prev = prev
-		} else if (isLastTask) {
-			this._lastTask = prev
-		}
-		// 如果当前任务是最后一个则更新进度
+		// 更新进度
 		if (this.logLevel === LogLevel.debug) {
-			this.debug(`${color(i18n`Finished`, ConsoleColor.brightMagenta)} ${taskId.content}`)
-		} else if (isLastTask) {
-			if (this._lastTask) {
-				this.startSpinner(this._lastTask.content)
+			this.debug(`${color(i18n`Finished`, ANSIColor.brightBlue)} ${taskId.content}`)
+		}
+		if (this._lastTask === taskId) {
+			if (taskId.prev) {
+				if (this.logLevel !== LogLevel.debug) {
+					this.startSpinner(taskId.prev.content)
+				}
 			} else {
 				this.stopSpinner()
 			}
+		}
+		// 删除当前节点
+		const prev = taskId.prev
+		const next = taskId.next
+		if (prev) {
+			prev.next = next
+		}
+		if (next) {
+			next.prev = prev
+		} else {
+			this._lastTask = prev
 		}
 	}
 
@@ -373,6 +372,7 @@ export class Logger {
 	 */
 	reset() {
 		this._lastTask = undefined
+		this.errorOrWarningCounter = 0
 		this.stopSpinner()
 	}
 
@@ -439,14 +439,19 @@ export class Logger {
 		hideCursor()
 		// 劫持 process.stdout.write，如果发现有新内容输出则先删除进度条，避免只显示部分进度条
 		const oldStdoutWrite: Function = this._oldStdoutWrite = process.stdout.write
+		const updateSpinner = this._updateSpinner
 		process.stdout.write = function () {
-			oldStdoutWrite.call(this, "\u001b[0J")
-			return oldStdoutWrite.apply(this, arguments)
+			oldStdoutWrite.call(this, "\x1b[0J")
+			const result = oldStdoutWrite.apply(this, arguments)
+			updateSpinner()
+			return result
 		}
 		const oldStderrWrite: Function = this._oldStderrWrite = process.stderr.write
 		process.stderr.write = function () {
-			oldStderrWrite.call(this, "\u001b[0J")
-			return oldStderrWrite.apply(this, arguments)
+			oldStderrWrite.call(this, "\x1b[0J")
+			const result = oldStderrWrite.apply(this, arguments)
+			updateSpinner()
+			return result
 		}
 		this._spinnerTimer = setInterval(this._updateSpinner, this.spinnerInterval)
 	}
@@ -456,9 +461,6 @@ export class Logger {
 
 	/** 获取或设置进度指示器的所有桢 */
 	spinnerFrames: string[]
-
-	/** 获取或设置进度指示器的颜色 */
-	spinnerColor: ConsoleColor
 
 	/** 更新进度指示器 */
 	private _updateSpinner = () => {
@@ -474,14 +476,14 @@ export class Logger {
 				if (this._progressPercent < 10) {
 					content = " "
 				}
-				content += `${this._progressPercent}% `
+				content += color(`${this._progressPercent}% `, ANSIColor.brightWhite)
 			}
 			if (this._spinnerText != undefined) {
 				content += this._spinnerText.replace(/[\n\r][^]*$/, "")
 			}
 			this._resolvedSpinnerText = truncateString(content, undefined, (process.stdout.columns || Infinity) - this.spinnerFrames[index].length)
 		}
-		this._oldStdoutWrite!.call(process.stdout, `\u001b[0J\u001b[${this.spinnerColor}m${this.spinnerFrames[index]}\u001b[39m${this._resolvedSpinnerText}\u001b[1G`)
+		this._oldStdoutWrite!.call(process.stdout, `\x1b[0J\x1b[${ANSIColor.brightCyan}m${this.spinnerFrames[index]}\x1b[39m${this._resolvedSpinnerText}\x1b[1G`)
 	}
 
 	/** 隐藏进度指示器 */
@@ -500,7 +502,7 @@ export class Logger {
 		// 还原劫持的 process.stdout.write
 		process.stdout.write = this._oldStdoutWrite!
 		process.stderr.write = this._oldStderrWrite!
-		process.stdout.write("\u001b[0J")
+		process.stdout.write("\x1b[0J")
 		showCursor()
 	}
 
@@ -588,11 +590,6 @@ export interface LoggerOptions {
 	 */
 	spinnerInterval?: number
 	/**
-	 * 进度指示器的颜色
-	 * @default "brightCyan"
-	 */
-	spinnerColor?: ConsoleColor | keyof typeof ConsoleColor
-	/**
 	 * 在成功日志前追加的前缀
 	 * @default process.platform === "win32" ? "√ " : "√ "
 	 */
@@ -643,7 +640,7 @@ export interface LogEntry {
 	/** 原始错误对象 */
 	error?: Error
 	/** 是否打印错误堆栈信息 */
-	showErrorStack?: boolean
+	showStack?: boolean
 	/** 日志相关的源文件名 */
 	fileName?: string
 	/** 日志相关的源内容 */

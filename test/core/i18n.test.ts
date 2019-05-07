@@ -3,6 +3,13 @@ import * as i18n from "../../src/core/i18n"
 
 export namespace i18nTest {
 
+	export function currentLocaleTest() {
+		const service = new i18n.LocaleService("en-US")
+		assert.strictEqual(service.currentLocale, "en-US")
+		service.currentLocale = "zh-cn"
+		assert.strictEqual(service.currentLocale, "zh-cn")
+	}
+
 	export function translateTest() {
 		const service = new i18n.LocaleService("en-US")
 		service.dict.set("hello", "你好")
@@ -21,6 +28,8 @@ export namespace i18nTest {
 		assert.strictEqual(service.i18n`hello2`, "hello2")
 		assert.strictEqual(service.i18n`hello2${","}world`, "hello2,world")
 		assert.strictEqual(service.i18n`hello2${","}world${"!"}`, "hello2,world!")
+		assert.strictEqual(service.i18n`hello${null}world`, "你好世界")
+		assert.strictEqual(service.i18n`${null}`, "")
 	}
 
 }

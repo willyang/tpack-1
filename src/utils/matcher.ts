@@ -1,5 +1,4 @@
-import { isAbsolute, join, posix, resolve, sep } from "path"
-import { escapeRegExp } from "./misc"
+import { dirname, isAbsolute, sep } from "path"
 import { commonDir, containsPath, isCaseInsensitive, relativePath } from "./path"
 
 /**
@@ -9,81 +8,101 @@ import { commonDir, containsPath, isCaseInsensitive, relativePath } from "./path
  * matcher.include("*.js")
  * matcher.include("*.jsx")
  * matcher.exclude("y.js")
- * matcher.test(path.resolve("x.js")) // true
- * matcher.test(path.resolve("y.js")) // false
+ * matcher.test("x.js") // true
+ * matcher.test("x.jsx") // true
+ * matcher.test("y.js") // false
  */
 export class Matcher {
 
-	/** 获取所有已编译的模式 */
-	readonly patterns: CompiledPattern[] = []
+	/** 获取通配符的根文件夹路径 */
+	readonly cwd: string
 
-	/** 获取或设置当前匹配器的排除匹配器 */
-	excludeMatcher?: Matcher
+	/** 判断是否忽略路径的大小写 */
+	readonly ignoreCase: boolean
 
 	/**
 	 * 初始化新的匹配器
-	 * @param pattern 要添加的匹配模式
-	 * @param options 模式的选项
+	 * @param options 附加选项
 	 */
-	constructor(pattern?: Pattern, options?: PatternOptions) {
-		if (pattern != undefined) {
-			this.include(pattern, options)
-		}
+	constructor(options?: MatcherOptions) {
+		this.cwd = options && options.cwd || ""
+		this.ignoreCase = options && options.ignoreCase !== undefined ? options.ignoreCase : isCaseInsensitive
 	}
+
+	/** 所有已解析的模式 */
+	private patterns?: ResolvedPattern
+
+	/** 获取排除匹配器 */
+	excludeMatcher?: Matcher
 
 	/**
 	 * 添加一个匹配模式
 	 * @param pattern 要添加的匹配模式
-	 * @param options 模式的选项
 	 */
-	include(pattern: Pattern, options: PatternOptions = {}) {
+	include(pattern: Pattern) {
 		if (typeof pattern === "string") {
-			if (pattern.charCodeAt(0) === 33 /*!*/ && !options.noNegate) {
-				this.exclude(pattern.slice(1), options)
+			if (pattern.charCodeAt(0) === 33 /*!*/) {
+				this.exclude(pattern.slice(1))
 			} else {
-				this.patterns.push(globToRegExp(pattern, options))
+				this._addPattern(globToRegExp(pattern, this))
 			}
 		} else if (Array.isArray(pattern)) {
-			for (const p of pattern) {
-				this.include(p, options)
+			for (const item of pattern) {
+				this.include(item)
 			}
 		} else if (pattern instanceof RegExp) {
-			this.patterns.push({
-				base: options && options.baseDir ? resolve(options.baseDir) : process.cwd(),
-				test(path) {
-					return pattern.test(relativePath(this.base, path))
-				}
+			this._addPattern({
+				test: this.cwd ? path => pattern.test(relativePath(this.cwd, path)) : path => pattern.test(path),
+				base: this.cwd
 			})
 		} else if (typeof pattern === "function") {
-			this.patterns.push({
-				base: options && options.baseDir ? resolve(options.baseDir) : process.cwd(),
-				test: pattern
+			this._addPattern({
+				test: pattern,
+				base: this.cwd
 			})
 		} else if (pattern instanceof Matcher) {
-			this.patterns.push(...pattern.patterns)
-			if (pattern.excludeMatcher) {
-				this.exclude(pattern.excludeMatcher, options)
+			for (let item = pattern.patterns; item; item = (item as ResolvedPattern).next) {
+				this._addPattern({
+					test: item instanceof RegExp ? path => item!.test(path) : item.test,
+					base: item.base || pattern.cwd
+				})
 			}
+			if (pattern.excludeMatcher) {
+				this.exclude(pattern.excludeMatcher)
+			}
+		}
+	}
+
+	/** 底层添加一个模式 */
+	private _addPattern(pattern: ResolvedPattern) {
+		let prev = this.patterns
+		if (prev) {
+			while (prev.next) {
+				prev = prev.next
+			}
+			prev.next = pattern
+		} else {
+			this.patterns = pattern
 		}
 	}
 
 	/**
 	 * 添加一个排除模式
 	 * @param pattern 要排除的模式
-	 * @param options 模式的选项
 	 */
-	exclude(pattern: Pattern, options?: PatternOptions) {
-		(this.excludeMatcher || (this.excludeMatcher = new Matcher())).include(pattern, options)
+	exclude(pattern: Pattern) {
+		(this.excludeMatcher || (this.excludeMatcher = new Matcher(this))).include(pattern)
 	}
 
 	/**
-	 * 判断当前匹配器是否可以匹配指定的绝对路径
-	 * @param fullPath 要判断的绝对路径
+	 * 判断当前匹配器是否可以匹配指定的路径
+	 * @param path 要判断的路径
+	 * @param args 传递给自定义函数的参数
 	 */
-	test(fullPath: string) {
-		for (const pattern of this.patterns) {
-			if (pattern.test(fullPath)) {
-				if (this.excludeMatcher && this.excludeMatcher.test(fullPath)) {
+	test(path: string, ...args: any[]) {
+		for (let pattern = this.patterns; pattern; pattern = pattern.next) {
+			if (pattern.test(path, ...args)) {
+				if (this.excludeMatcher && this.excludeMatcher.test(path, ...args)) {
 					return false
 				}
 				return true
@@ -92,33 +111,32 @@ export class Matcher {
 		return false
 	}
 
-	/**
-	 * 获取所有模式的公共基路径
-	 */
+	/** 获取所有模式的公共基路径 */
 	get base() {
-		if (!this.patterns.length) {
-			return process.cwd() + sep
-		}
-		let result: string | null = this.patterns[0].base
-		for (let i = 1; i < this.patterns.length; i++) {
-			result = commonDir(result, this.patterns[i].base)
+		let result: string | null = null
+		for (let pattern = this.patterns; pattern; pattern = pattern.next) {
+			if (result === null) {
+				result = pattern.base
+			} else {
+				result = commonDir(result, pattern.base, this.ignoreCase)
+				if (result === null) {
+					break
+				}
+			}
 		}
 		return result
 	}
 
-	/**
-	 * 获取所有模式的所有公共基路径
-	 * @param ignoreCase 是否忽略路径的大小写
-	 */
-	getBases(ignoreCase = isCaseInsensitive) {
+	/** 获取所有模式的所有公共基路径 */
+	getBases() {
 		const result: string[] = []
-		outer: for (const pattern of this.patterns) {
+		outer: for (let pattern = this.patterns; pattern; pattern = pattern.next) {
 			const base = pattern.base
 			for (let i = 0; i < result.length; i++) {
-				if (containsPath(result[i], base, ignoreCase)) {
+				if (containsPath(result[i], base, this.ignoreCase)) {
 					continue outer
 				}
-				if (containsPath(base, result[i], ignoreCase)) {
+				if (containsPath(base, result[i], this.ignoreCase)) {
 					result[i] = base
 					continue outer
 				}
@@ -129,14 +147,15 @@ export class Matcher {
 	}
 
 	/**
-	 * 获取匹配结果应使用的基路径，如果无可用路径则返回空
-	 * @param fullPath 要获取的绝对路径
+	 * 根据模式计算匹配结果的基路径
+	 * @param path 要获取的路径
+	 * @returns 如果没有匹配的基路径则返回空
 	 */
-	baseOf(fullPath: string) {
-		let result: string | undefined
-		for (let i = 0; i < this.patterns.length; i++) {
-			const base = this.patterns[i].base
-			if ((!result || base.length > result.length) && containsPath(base, fullPath)) {
+	baseOf(path: string) {
+		let result: string | null = null
+		for (let pattern = this.patterns; pattern; pattern = pattern.next) {
+			const base = pattern.base
+			if ((result === null || base.length > result.length) && containsPath(base, path)) {
 				result = base
 			}
 		}
@@ -144,26 +163,28 @@ export class Matcher {
 	}
 
 	/**
-	 * 获取匹配结果应使用的相对路径，如果无可用路径则返回空
-	 * @param fullPath 要获取的绝对路径
+	 * 根据模式计算匹配结果的相对路径
+	 * @param path 要获取的路径
+	 * @returns 如果没有匹配的基路径则返回原路径
 	 */
-	relative(fullPath: string) {
-		let result: string | undefined
-		for (let i = 0; i < this.patterns.length; i++) {
-			const newResult = relativePath(this.patterns[i].base, fullPath)
-			if (!newResult) {
-				result = ""
-				break
-			} else if (newResult.startsWith("../") || newResult === "..") {
-				continue
-			}
-			if (!result || newResult.length < result.length) {
-				result = newResult
-			}
-		}
-		return result
+	relative(path: string) {
+		const base = this.baseOf(path)
+		return base ? relativePath(base, path) : path
 	}
 
+}
+
+/** 表示匹配器的选项 */
+export interface MatcherOptions {
+	/**
+	 * 如果需要匹配绝对路径，则设置当前根绝对路径
+	 */
+	cwd?: string
+	/**
+	 * 是否忽略路径的大小写
+	 * @default isCaseInsensitive
+	 */
+	ignoreCase?: boolean
 }
 
 /**
@@ -171,32 +192,52 @@ export class Matcher {
  * @description
  * ##### 通配符
  * 在通配符中可以使用以下特殊字符：
- * - `*`: 匹配任意个字符，但 `/` 除外，比如 `usr/*\/foo.js` 匹配 `usr/dir/foo.js`，但不匹配 `usr/foo.js` 和 `usr/dir/sub/foo.js`
- * - `**`: 匹配任意个字符，比如 `usr/**\/foo.js` 可以匹配 `usr/dir/foo.js`、`usr/foo.js` 或 `usr/dir/sub/foo.js`
- * - `?`: 匹配固定一个字符，但 `/` 除外
- * - `[abc]`: 匹配括号中的任一个字符
+ * - `?`: 匹配固定一个字符，但 `/` 和文件名开头的 `.` 除外
+ * - `*`: 匹配任意个字符，但 `/` 和文件名开头的 `.` 除外
+ * - `**`: 匹配任意个字符，但文件名开头的 `.` 除外
+ * - `[abc]`: 匹配方括号中的任一个字符
  * - `[a-z]`: 匹配 a 到 z 的任一个字符
- * - `[!abc]`: 匹配括号中的任一个字符以外的字符
- * - `{abc,xyz}`: 匹配括号中的任一个模式，设置 `noBrace: true` 后 `{` 只作普通字符使用
- * - `\`: 表示转义字符，如 `\[` 表示 `[` 作普通字符使用；Windows 中绝对路径中的 `\` 将作分隔符使用
- * - `!xyz`：如果通配符以 `!` 开头，表示排除匹配的项，注意如果排除了父文件夹，出于性能考虑，无法重新包含其中的子文件，设置 `noNegate: true` 后 `!` 只作普通字符使用
- * - `xyz/`：如果通配符以 `/` 结尾，表示只匹配文件夹
+ * - `[!abc]`: 匹配方括号中的任一个字符以外的字符
+ * - `{abc,xyz}`: 匹配大括号中的任一种模式
+ * - `\`: 表示转义字符，如 `\[` 表示 `[` 按普通字符处理
+ * - `!xyz`：如果通配符以 `!` 开头，表示排除匹配的项，注意如果排除了父文件夹，出于性能考虑，无法重新包含其中的子文件
+ * 
+ * `*` 和 `**` 的区别在于 `**` 可以匹配任意级文件夹，而 `*` 只能匹配一级，但如果通配符中没有 `/`（末尾的除外），`*` 等价于 `**`
+ * 
+ * 通配符              | 路径               | 结果
+ * -------------------|--------------------|--------------
+ * usr/*‌/foo.js       | usr/foo.js         | 不匹配
+ * usr/*‌/foo.js       | usr/dir/foo.js     | 匹配
+ * usr/*‌/foo.js       | usr/dir/sub/foo.js | 不匹配
+ * usr/**‌‌/foo.js      | usr/foo.js         | 匹配
+ * usr/**‌‌‌/foo.js      | usr/dir/foo.js     | 匹配
+ * usr/**‌‌/foo.js      | usr/dir/sub/foo.js | 匹配
+ * *.js               | usr/foo.js         | 匹配
+ * *.js               | usr/dir/foo.js     | 匹配
+ * *.js               | usr/dir/sub/foo.js | 匹配
+ * 
+ * `*`、`**` 和 `?` 不匹配以 `.` 开头的文件名，要允许匹配，应写成 `{.,}*`
  *
- * `*`、`**` 和 `?` 默认不匹配直接以 `.` 开头的路径，要允许匹配，可以写成 `.*`，或设置 `dot: true`
- *
- * 如果通配符是一个绝对路径，则禁用所有特殊字符，直接匹配对应路径，设置 `noAbsolute: true` 后将不对绝对路径作特殊处理
- *
- * 如果设置 `matchDir: true`，则只要匹配了根文件夹，也认为匹配了内部所有文件
- * 如果通配符中不存在 `*`、`**`、`?`、`[]` 和 `{}`，系统将默认设置 `matchDir: true`，所以 `src` 默认等价于 `src/**`
- *
- * 如果设置 `matchBase: true`，则只要匹配了文件名，也认为匹配该文件
- * 如果通配符中存在 `*` 但不存在 `/`，系统将默认设置 `matchBase: true`，所以 `*.js` 默认等价于 `**\/*.js`
+ * 通配符              | 路径               | 结果
+ * -------------------|--------------------|--------------
+ * *                  | .js                | 不匹配
+ * .*                 | .js                | 匹配
+ * x*y                | x.y                | 匹配
+ * 
+ * 如果通配符以 `/` 结尾，表示匹配文件夹和内部所有文件，如果通配符中没有 `?`、`*`、`**`、`[]` 和 `{}`，则通配符按文件夹或文件名处理
+ * 
+ * 通配符开头可以追加 `./` 表示当前目录，但正文中不允许出现 `./`、`../` 和 `//`，如果需要可以使用 `path.posix.normalize()` 格式化
+ * 
+ * 默认地，通配符只逐字匹配，如果设置了 `cwd`，则使用绝对路径模式：
+ * 1. 只匹配绝对路径，Windows 使用 `\` 作为分隔符
+ * 2. 支持前缀 `../`
+ * 3. 如果通配符也是绝对路径，则 `[]`、`{}`、`\`（仅 Windows）作普通字符匹配
  *
  * ##### 正则表达式
  * 正则表达式的源是一个固定以 `/` 为分隔符的相对路径
  *
  * ##### 自定义函数
- * 函数接收一个绝对路径为参数，如果函数返回 `true` 表示匹配该路径，如：
+ * 函数接收原始路径为参数，如果函数返回 `true` 表示匹配该路径，如：
  * ```js
  * function match(path) {
  *     return path.endsWith(".js")
@@ -209,275 +250,338 @@ export class Matcher {
  * ##### 数组
  * 可以将以上模式自由组合成数组，只要匹配数组中任一个模式，就认定匹配当前模式
  */
-export type Pattern = RecursiveArray<string | RegExp | ((path: string) => boolean) | Matcher>[0]
+export type Pattern = string | RegExp | ResolvedPattern["test"] | Matcher | (string | RegExp | ResolvedPattern["test"] | Matcher)[]
 
-interface RecursiveArray<T> extends Array<T | RecursiveArray<T>> { }
-
-/** 表示模式的选项 */
-export interface PatternOptions {
-	/**
-	 * 模式的根路径
-	 * @default process.cwd()
-	 */
-	baseDir?: string
-	/**
-	 * 是否禁止使用绝对路径，禁止后开头的 `/` 按 `./` 处理，如果启用，Windows 系统下绝对路径将禁用 `\` 转义功能
-	 * @default false
-	 */
-	noAbsolute?: boolean
-	/**
-	 * 是否禁止通过开头的 `../` 跳出根路径
-	 * @default false
-	 */
-	noBack?: boolean
-	/**
-	 * 是否禁止将 `!` 解析为非
-	 * @default false
-	 */
-	noNegate?: boolean
-	/**
-	 * 是否禁用大括号扩展
-	 * @default false
-	 */
-	noBrace?: boolean
-	/**
-	 * 是否禁用中括号扩展
-	 * @default false
-	 */
-	noBracket?: boolean
-	/**
-	 * 是否允许通配符 `*` 和 `?` 匹配 `.` 开头的路径
-	 * @default false
-	 */
-	dot?: boolean
-	/**
-	 * 是否允许通过匹配文件夹直接匹配内部所有子文件
-	 * @default false
-	 */
-	matchDir?: boolean
-	/**
-	 * 是否只匹配基路径
-	 * @default false
-	 */
-	matchBase?: boolean
-	/**
-	 * 是否忽略路径的大小写
-	 * @default isCaseInsensitive
-	 */
-	ignoreCase?: boolean
-}
-
-/** 表示一个已编译的模式 */
-export interface CompiledPattern {
-	/** 模式基路径 */
-	base: string
+/** 表示一个已解析的模式 */
+interface ResolvedPattern {
 	/**
 	 * 测试当前模式是否匹配指定的路径
-	 * @param fullPath 要测试的绝对路径
+	 * @param path 要测试的路径
+	 * @param args 传递给自定义函数的参数
 	 */
-	test(fullPath: string): boolean
+	test(path: string, ...args: any[]): boolean
+	/** 当前模式的基路径 */
+	base: string
+	/** 下一个解析模式 */
+	next?: ResolvedPattern
 }
 
-/** 将指定的通配符转为等价的正则表达式 */
-function globToRegExp(pattern: string, options: PatternOptions) {
-
-	// 处理绝对路径
-	let glob = pattern
-	let baseDir: string
-	const abs = !options.noAbsolute && isAbsolute(glob)
-	if (abs) {
-		baseDir = ""
-		// Windows: 允许绝对路径使用 \ 作为分隔符，禁止 \ 作为转义字符
-		if (sep !== "/") {
-			glob = glob.split(sep).join("/")
-		}
+/** 
+ * 将指定的通配符转为等价的正则表达式
+ * @param glob 要转换的通配符模式
+ * @param options 附加选项
+ */
+function globToRegExp(glob: string, options: Matcher) {
+	let base = options.cwd
+	let isAbsoluteGlob: boolean
+	let slash: string
+	if (base) {
+		isAbsoluteGlob = isAbsolute(glob)
+		slash = `\\${sep}`
 	} else {
-		baseDir = resolve(options.baseDir || ".")
-		if (glob.startsWith("/")) glob = "." + glob
-		// 删除多余的 ./ 和 ../
-		glob = posix.normalize(glob)
-		if (glob === "." || glob === "./") {
-			glob = ""
-		}
-		const match = /^(?:\.\.(\/|$))+/.exec(glob)
-		if (match) {
-			if (!options.noBack) {
-				baseDir = join(baseDir, match[0])
-			}
-			glob = glob.slice(match[0].length)
-		}
-		if (!baseDir.endsWith(sep)) {
-			baseDir += sep
-		}
+		isAbsoluteGlob = false
+		slash = "/"
 	}
-
-	// 生成正则表达式
+	// 转换正则
 	let regexp = ""
-	let openBrace = 0
-	let noSpecialChar = true
-	let baseEnd = 0
-	let hasEscapeChar = false
+	let hasSlash = false
+	let endsWithSlash = false
+	let hasGlob = false
 	let hasStar = false
-	patternLoop: for (let i = 0; i < glob.length; i++) {
-		switch (glob.charCodeAt(i)) {
+	let braceCount = 0
+	let baseStart = 0
+	let baseEnd = 0
+	let hasEscape = false
+	const end = glob.length - 1
+	for (let i = 0; i <= end; i++) {
+		const ch = glob.charCodeAt(i)
+		switch (ch) {
+			case 46 /*.*/:
+				// 仅处理开头的 ./ 和 ../
+				if (!regexp) {
+					// 忽略 ./
+					if (glob.charCodeAt(i + 1) === 47 /*/*/) {
+						baseStart = i + 2
+						i++
+						if (i < end) {
+							hasSlash = true
+						} else {
+							endsWithSlash = true
+						}
+						break
+					}
+					// 绝对路径模式：处理开头的 ../
+					if (base && glob.charCodeAt(i + 1) === 46 /*.*/ && glob.charCodeAt(i + 2) === 47 /*/*/) {
+						baseStart = i + 3
+						const newBase = dirname(base)
+						if (newBase.length !== base.length) {
+							i += 2
+							if (i < end) {
+								hasSlash = true
+							} else {
+								endsWithSlash = true
+							}
+							base = newBase
+							break
+						}
+					}
+				}
+				regexp += "\\."
+				break
 			case 47 /*/*/:
-				if (noSpecialChar) {
+				if (i < end) {
+					hasSlash = true
+				} else {
+					endsWithSlash = true
+				}
+				if (!hasGlob) {
 					baseEnd = i
 				}
-				regexp += `\\${sep}`
+				regexp += slash
 				break
 			case 42 /***/:
-				noSpecialChar = false
+				hasGlob = true
 				const isStart = i === 0 || glob.charCodeAt(i - 1) === 47 /*/*/
 				if (glob.charCodeAt(i + 1) === 42 /***/) {
 					i++
 					// 为了容错，将 p** 翻译为 p*/**，将 **p 翻译为 **/*p，将 p**q 翻译为 p*/**/*q
-					regexp += `${isStart ? "" : `[^\\${sep}]*`}(?:(?=[^${options.dot ? "" : "\\."}])[^\\${sep}]*${i < glob.length - 1 ? `\\${sep}` : `(?:\\${sep}|$)`})*`
+					regexp += `${isStart ? "" : `[^${slash}]*`}(?:(?=[^\\.])[^${slash}]*${i < end ? slash : `(?:${slash}|$)`})*`
 					if (glob.charCodeAt(i + 1) === 47 /*/*/) {
 						i++
+						if (i < end) {
+							hasSlash = true
+						} else {
+							endsWithSlash = true
+							regexp += "$"
+						}
 					} else {
-						regexp += `${options.dot ? "" : "(?!\\.)"}[^\\${sep}]*`
+						regexp += `(?!\\.)[^${slash}]*`
 					}
-				} else {
-					hasStar = true
-					// 如果是 /*/ 则 * 至少需匹配一个字符
-					regexp += `${isStart && !options.dot ? "(?!\\.)" : ""}[^\\${sep}]${isStart && (i === glob.length - 1 || glob.charCodeAt(i + 1) === 47 /*/*/) ? "+" : "*"}`
+					break
 				}
+				hasStar = true
+				// 如果是 /*/ 则 * 至少需匹配一个字符
+				regexp += `${isStart ? "(?!\\.)" : ""}[^${slash}]${isStart && (i === end || glob.charCodeAt(i + 1) === 47 /*/*/) ? "+" : "*"}`
 				break
 			case 63 /*?*/:
-				noSpecialChar = false
-				regexp += `[^\\${sep}${options.dot || i > 0 && glob.charCodeAt(i - 1) !== 47 /*/*/ ? "" : "\\."}]`
+				hasGlob = true
+				regexp += `[^${slash}${i > 0 && glob.charCodeAt(i - 1) !== 47 /*/*/ ? "" : "\\."}]`
 				break
 			case 92 /*\*/:
-				if (noSpecialChar) {
-					hasEscapeChar = true
+				// Windows: 如果通配符是绝对路径，则 \ 作路径分隔符处理
+				if (isAbsoluteGlob && sep === "\\") {
+					if (i < end) {
+						hasSlash = true
+					} else {
+						endsWithSlash = true
+					}
+					if (!hasGlob) {
+						baseEnd = i
+					}
+					regexp += slash
+					break
 				}
-				regexp += escapeRegExp(glob.charAt(++i) || "\\")
+				hasEscape = true
+				regexp += escapeRegExp(glob.charCodeAt(++i))
 				break
 			case 91 /*[*/:
-				// 不处理绝对路径的 [] 字符
-				if (!abs && !options.noBracket) {
-					// 查找配对的 ]，如果找不到按普通字符处理
-					let classes = ""
-					let hasRange = false
-					classLoop: for (let j = i + 1; j < glob.length; j++) {
-						switch (glob.charCodeAt(j)) {
-							case 93 /*]*/:
-								// []] 的第一个 ] 按普通字符处理
-								if (classes) {
-									classes = `[${classes}]`
-									// [z-a] 是错误的正则，为了确保生成的正则没有语法错误，先测试一次
-									if (hasRange) {
-										try {
-											new RegExp(classes)
-										} catch (e) {
-											break classLoop
-										}
-									}
-									noSpecialChar = false
-									regexp += classes
-									i = j
-									continue patternLoop
-								}
-								classes += "\\]"
-								break
-							case 45 /*-*/:
-								classes += "-"
-								hasRange = true
-								break
-							case 33 /*!*/:
-								if (j === i + 1 && glob.charCodeAt(j + 1) !== 93 /*]*/) {
-									classes += "^"
-								} else {
-									classes += "!"
-								}
-								break
-							case 92 /*\*/:
-								classes += escapeRegExp(glob.charAt(++j) || "\\")
-								break
-							default:
-								classes += escapeRegExp(glob.charAt(j))
-								break
-						}
+				if (!isAbsoluteGlob) {
+					const classes = tryParseClasses(glob, i)
+					if (classes) {
+						hasGlob = true
+						regexp += classes[0]
+						i = classes[1]
+						break
 					}
 				}
 				regexp += "\\["
 				break
 			case 123 /*{*/:
-				if (abs || options.noBrace) {
-					regexp += "\\{"
-				} else {
-					noSpecialChar = false
-					openBrace++
+				if (!isAbsoluteGlob && findCloseBrace(glob, i) >= 0) {
+					hasGlob = true
+					braceCount++
 					regexp += "(?:"
+					break
 				}
+				regexp += "\\{"
 				break
 			case 44 /*,*/:
-				if (openBrace) {
+				if (braceCount) {
 					regexp += "|"
-				} else {
-					regexp += ","
+					break
 				}
+				regexp += ","
 				break
 			case 125 /*}*/:
-				if (openBrace) {
-					openBrace--
+				if (braceCount) {
+					braceCount--
 					regexp += ")"
 					break
 				}
-			// fall through
+				regexp += "\\}"
+				break
 			default:
-				regexp += escapeRegExp(glob.charAt(i))
+				regexp += escapeRegExp(ch)
 				break
 		}
 	}
-	while (openBrace) {
-		regexp += ")"
-		openBrace--
+	// 追加后缀
+	if (!endsWithSlash && regexp) {
+		regexp += hasGlob ? "$" : `(?:$|${slash})`
 	}
-	regexp = (!abs && (options.matchBase === undefined ? hasStar && pattern.indexOf("/") < 0 : options.matchBase) ? `(?:^|\\${sep})` : `^${escapeRegExp(baseDir)}`) + regexp
-	if (glob && !glob.endsWith("/")) {
-		regexp += (options.matchDir === undefined ? noSpecialChar : options.matchDir) ? `(?:$|\\${sep})` : `$`
+	// 追加前缀
+	if (isAbsoluteGlob) {
+		base = ""
+		regexp = "^" + regexp
+	} else if (hasStar && !hasSlash) {
+		regexp = `(?:^|${slash})` + regexp
+	} else {
+		let prepend = "^"
+		if (base) {
+			for (let i = 0; i < base.length; i++) {
+				prepend += escapeRegExp(base.charCodeAt(i))
+			}
+			if (!base.endsWith(sep)) prepend += slash
+		}
+		regexp = prepend + regexp
 	}
-
-	// 生成正则
-	const result = new RegExp(regexp, (options.ignoreCase === undefined ? isCaseInsensitive : options.ignoreCase) ? "i" : "") as any as CompiledPattern
-	let basePart = noSpecialChar ? glob : glob.slice(0, baseEnd)
-	if (hasEscapeChar) {
-		basePart = basePart.replace(/\\(.)/g, "$1")
+	// 计算基路径
+	if (baseEnd > baseStart) {
+		let appendBase = glob.slice(baseStart, baseEnd)
+		if (hasEscape) {
+			appendBase = appendBase.replace(/\\(.)/g, "$1")
+		}
+		if (base && !base.endsWith(sep)) {
+			base += sep
+		}
+		base += appendBase
 	}
-	result.base = join(baseDir, basePart)
+	// 编译正则实例
+	const result = new RegExp(regexp, options.ignoreCase ? "i" : "") as Partial<ResolvedPattern> as ResolvedPattern
+	result.base = base
 	return result
 }
 
+/** 尝试从通配符指定位置解析符号组 */
+function tryParseClasses(glob: string, startIndex: number): [string, number] | null {
+	let classes = ""
+	let hasRange = false
+	while (++startIndex < glob.length) {
+		const ch = glob.charCodeAt(startIndex)
+		switch (ch) {
+			case 93 /*]*/:
+				// []] 的第一个 ] 按普通字符处理
+				if (classes) {
+					classes = `[${classes}]`
+					// [z-a] 是错误的正则，为了确保生成的正则没有语法错误，先测试一次
+					if (hasRange) {
+						try {
+							new RegExp(classes)
+						} catch {
+							return null
+						}
+					}
+					return [classes, startIndex]
+				}
+				classes += "\\]"
+				break
+			case 47 /*/*/:
+				return null
+			case 45 /*-*/:
+				hasRange = true
+				classes += "-"
+				break
+			case 33 /*!*/:
+				// [x!] 的 ! 按普通字符处理
+				if (classes) {
+					classes += "!"
+				} else {
+					classes += "^"
+				}
+				break
+			case 92 /*\*/:
+				classes += escapeRegExp(glob.charCodeAt(++startIndex))
+				break
+			default:
+				classes += escapeRegExp(ch)
+				break
+		}
+	}
+	return null
+}
+
+/** 搜索对应的关闭大括号 */
+function findCloseBrace(glob: string, startIndex: number): number {
+	while (++startIndex < glob.length) {
+		const ch = glob.charCodeAt(startIndex)
+		switch (ch) {
+			case 125 /*}*/:
+				return startIndex
+			case 92 /*\*/:
+				startIndex++
+				break
+			case 91 /*[*/:
+				const next = tryParseClasses(glob, startIndex)
+				if (next) {
+					startIndex = next[1]
+				}
+				break
+			case 123 /*{*/:
+				const right = findCloseBrace(glob, startIndex)
+				if (right < 0) {
+					return right
+				}
+				startIndex = right
+				break
+		}
+	}
+	return -1
+}
+
+/** 编码正则表达式中的特殊字符 */
+function escapeRegExp(ch: number) {
+	return ch === 46 /*.*/ || ch === 92 /*\*/ || ch === 40 /*(*/ || ch === 41 /*)*/ || ch === 123 /*{*/ || ch === 125 /*}*/ || ch === 91 /*[*/ || ch === 93 /*]*/ || ch === 45 /*-*/ || ch === 43 /*+*/ || ch === 42 /***/ || ch === 63 /*?*/ || ch === 94 /*^*/ || ch === 36 /*$*/ || ch === 124 /*|*/ ? `\\${String.fromCharCode(ch)}` : ch !== ch /*NaN*/ ? "\\\\" : String.fromCharCode(ch)
+}
+
 /**
- * 测试指定的内容是否符合指定的模式
- * @param value 要测试的内容
+ * 测试指定的路径是否符合指定的模式
+ * @param path 要测试的路径
  * @param pattern 要测试的匹配模式
- * @param options 模式的选项
+ * @param options 附加选项
  */
-export function match(value: string, pattern: Pattern, options?: PatternOptions) {
-	value = resolve(value) + (value.endsWith(sep) || value.endsWith("/") || !value || value === "." ? sep : "")
-	return new Matcher(pattern, options).test(value)
+export function match(path: string, pattern: Pattern, options?: MatcherOptions) {
+	const matcher = new Matcher(options)
+	matcher.include(pattern)
+	return matcher.test(path)
 }
 
 /**
  * 判断指定的模式是否是通配符
  * @param pattern 要判断的模式
- * @param options 模式的选项
  */
-export function isGlob(pattern: string, options: Pick<PatternOptions, "noAbsolute" | "noNegate" | "noBrace" | "noBracket"> = {}) {
-	if (!options.noAbsolute && isAbsolute(pattern)) {
-		return false
+export function isGlob(pattern: string) {
+	for (let i = 0; i < pattern.length; i++) {
+		switch (pattern.charCodeAt(i)) {
+			case 42 /***/:
+			case 63 /*?*/:
+			case 92 /*\*/:
+				return true
+			case 91 /*[*/:
+				if (tryParseClasses(pattern, i)) {
+					return true
+				}
+				break
+			case 123 /*{*/:
+				if (findCloseBrace(pattern, i) >= 0) {
+					return true
+				}
+				break
+			case 33 /*!*/:
+				if (i === 0) {
+					return true
+				}
+				break
+		}
 	}
-	if (!options.noBracket && /\[[^\]]+\]/.test(pattern)) {
-		return true
-	}
-	if (!options.noBrace && /\{.*\}/.test(pattern)) {
-		return true
-	}
-	if (!options.noNegate && pattern.startsWith("!")) {
-		return true
-	}
-	return /[\\\*\?]/.test(pattern)
+	return false
 }

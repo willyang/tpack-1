@@ -4,6 +4,8 @@ import * as url from "../../src/utils/url"
 export namespace urlTest {
 
 	export function resolveURLTest() {
+		assert.strictEqual(url.resolveURL("foo/", "goo"), "foo/goo")
+
 		assert.strictEqual(url.resolveURL("foo", ""), "foo")
 		assert.strictEqual(url.resolveURL("foo", "."), "")
 		assert.strictEqual(url.resolveURL("foo", ".."), "..")
@@ -22,7 +24,6 @@ export namespace urlTest {
 		assert.strictEqual(url.resolveURL("foo/", ""), "foo/")
 		assert.strictEqual(url.resolveURL("foo/", "."), "foo/")
 		assert.strictEqual(url.resolveURL("foo/", ".."), "")
-		assert.strictEqual(url.resolveURL("foo/", "goo"), "foo/goo")
 		assert.strictEqual(url.resolveURL("foo/", "goo/"), "foo/goo/")
 		assert.strictEqual(url.resolveURL("foo/", "goo//"), "foo/goo//")
 		assert.strictEqual(url.resolveURL("foo/", "./goo"), "foo/goo")
@@ -164,6 +165,8 @@ export namespace urlTest {
 	}
 
 	export function relativeURLTest() {
+		assert.strictEqual(url.relativeURL("foo/", "foo/goo"), "goo")
+
 		assert.strictEqual(url.relativeURL("foo", ""), ".")
 		assert.strictEqual(url.relativeURL("foo", "."), ".")
 		assert.strictEqual(url.relativeURL("foo", ".."), "..")
@@ -178,7 +181,6 @@ export namespace urlTest {
 		assert.strictEqual(url.relativeURL("foo/", "."), "../")
 		assert.strictEqual(url.relativeURL("foo/", ".."), "../..")
 		assert.strictEqual(url.relativeURL("foo/", "foo2"), "../foo2")
-		assert.strictEqual(url.relativeURL("foo/", "foo/goo"), "goo")
 		assert.strictEqual(url.relativeURL("foo/", "foo/goo?hoo=1"), "goo?hoo=1")
 		assert.strictEqual(url.relativeURL("foo/", "../foo/goo"), "../../foo/goo")
 		assert.strictEqual(url.relativeURL("foo/", "/foo2"), "/foo2")
@@ -225,6 +227,8 @@ export namespace urlTest {
 	}
 
 	export function normalizeURLTest() {
+		assert.strictEqual(url.normalizeURL("/foo/../hoo/"), "/hoo/")
+
 		assert.strictEqual(url.normalizeURL(""), "")
 		assert.strictEqual(url.normalizeURL("foo"), "foo")
 		assert.strictEqual(url.normalizeURL("foo/goo"), "foo/goo")
@@ -233,7 +237,6 @@ export namespace urlTest {
 		assert.strictEqual(url.normalizeURL("//foo/./hoo"), "//foo/hoo")
 		assert.strictEqual(url.normalizeURL("//foo/../hoo"), "//foo/hoo")
 		assert.strictEqual(url.normalizeURL("//foo/../hoo/"), "//foo/hoo/")
-		assert.strictEqual(url.normalizeURL("/foo/../hoo/"), "/hoo/")
 		assert.strictEqual(url.normalizeURL("/foo/../hoo"), "/hoo")
 		assert.strictEqual(url.normalizeURL("javascript:alert(0),alert(1)"), "javascript:alert(0),alert(1)")
 		assert.strictEqual(url.normalizeURL("my-protocol:alert(0),alert(1)"), "my-protocol:alert(0),alert(1)")
@@ -280,6 +283,7 @@ export namespace urlTest {
 
 	export function isAbsoluteURLTest() {
 		assert.strictEqual(url.isAbsoluteURL("/"), true)
+
 		assert.strictEqual(url.isAbsoluteURL("//"), true)
 		assert.strictEqual(url.isAbsoluteURL("//server"), true)
 		assert.strictEqual(url.isAbsoluteURL("//server/file"), true)

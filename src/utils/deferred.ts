@@ -1,30 +1,40 @@
-/** 表示一个延时对象 */
-export class Deferred {
+/** 表示一个延时等待对象，用于等待多个异步任务 */
+export class Deferred implements PromiseLike<any> {
 
-	/** 获取当前关联的确认对象 */
-	promise?: Promise<void>
+	/** 所有等待异步任务完成后的回调函数 */
+	private readonly _callbacks: ((value: any) => any)[] = []
 
-	/** 关联的确认对象解析函数 */
-	private _promiseResolve?: () => void
-
-	/** 获取阻止的次数，当次数为 0 时说明未阻止 */
+	/** 获取正在执行的异步任务数 */
 	rejectCount = 0
 
-	/** 阻止后续异步操作 */
-	reject() {
-		if (this.rejectCount++ === 0) {
-			this.promise = new Promise(resolve => {
-				this._promiseResolve = resolve
-			})
+	/** 
+	 * 添加所有异步任务执行完成后的回调函数
+	 * @param callback 要执行的回调函数
+	 */
+	then(callback: (value: any) => any) {
+		if (this.rejectCount) {
+			this._callbacks.push(callback)
+		} else {
+			process.nextTick(callback)
 		}
+		return this
 	}
 
-	/** 恢复后续异步操作 */
+	/** 记录即将执行一个异步任务 */
+	reject() {
+		this.rejectCount++
+	}
+
+	/** 记录异步任务已结束 */
 	resolve() {
-		if (--this.rejectCount === 0) {
-			const resolve = this._promiseResolve!
-			this._promiseResolve = this.promise = undefined
-			resolve()
+		this.rejectCount--
+		while (this.rejectCount === 0) {
+			const callback = this._callbacks.shift()
+			if (callback) {
+				callback(undefined)
+			} else {
+				break
+			}
 		}
 	}
 

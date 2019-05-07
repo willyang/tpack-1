@@ -35,6 +35,6 @@ export function decodeDataURI(value: string) {
 	const match = /^data:([^;]*);([^,]*),/.exec(value)
 	return match ? {
 		mimeType: match[1],
-		data: Buffer.from(value.slice(match[0].length), match[2])
+		data: Buffer.from(value.slice(match[0].length), match[2] as BufferEncoding)
 	} : null
 }

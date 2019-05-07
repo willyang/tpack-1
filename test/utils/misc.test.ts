@@ -4,9 +4,10 @@ import * as misc from "../../src/utils/misc"
 export namespace miscTest {
 
 	export function stripBOMTest() {
+		assert.deepStrictEqual(misc.stripBOM("\ufeffg"), "g")
+
 		assert.deepStrictEqual(misc.stripBOM(""), "")
 		assert.deepStrictEqual(misc.stripBOM("\ufeff"), "")
-		assert.deepStrictEqual(misc.stripBOM("\ufeffg"), "g")
 	}
 
 	export function insertSortedTest() {
@@ -18,7 +19,7 @@ export namespace miscTest {
 		assert.deepStrictEqual(test([1, 3, 5], 3), [1, 3, 3, 5])
 		assert.deepStrictEqual(test([1, 3, 5], 5), [1, 3, 5, 5])
 
-		function test(array, value) {
+		function test(array: any[], value: any) {
 			misc.insertSorted(array, value, (x, y) => x <= y)
 			return array
 		}
@@ -30,26 +31,36 @@ export namespace miscTest {
 			const func = misc.defer(() => {
 				value++
 				resolve()
-			}, 2)
+			})
 			func()
 			func()
 		})
 		assert.strictEqual(value, 1)
+
+		await new Promise(resolve => {
+			const func = misc.defer(() => {
+				value++
+				resolve()
+			}, 2)
+			func()
+			func()
+		})
+		assert.strictEqual(value, 2)
 	}
 
 	export function escapeRegExpTest() {
 		assert.strictEqual(new RegExp(misc.escapeRegExp("\\s")).source, /\\s/.source)
 	}
 
-	export function copyToMapTest() {
+	export function objectToMapTest() {
 		const map = new Map<string, number>()
-		misc.copyToMap({ x: 1, y: 2 }, map)
+		misc.objectToMap({ x: 1, y: 2 }, map)
 		assert.deepStrictEqual(Array.from(map.entries()), [["x", 1], ["y", 2]])
 	}
 
 	export function formatDateTest() {
-		assert.strictEqual(misc.formatDate(new Date("2014/01/01 03:05:07")), "2014-01-01 03:05:07")
 		assert.strictEqual(misc.formatDate(new Date("2014/01/01 03:05:07"), "yyMdHms"), "1411357")
+
 		assert.strictEqual(misc.formatDate(new Date("2014/01/01 03:05:07"), "yyyy-MM-dd HH:mm:ss"), "2014-01-01 03:05:07")
 		assert.strictEqual(misc.formatDate(new Date("2014/01/01 03:05:07"), "yyMMddHHmmss"), "140101030507")
 		assert.strictEqual(misc.formatDate(new Date("2014/01/01 03:05:07"), "你好"), "你好")
@@ -84,12 +95,14 @@ export namespace miscTest {
 	}
 
 	export function formatSizeTest() {
+		assert.strictEqual(misc.formatSize(1000), "0.98KB")
+
 		assert.strictEqual(misc.formatSize(0), "0B")
 		assert.strictEqual(misc.formatSize(1), "1B")
-		assert.strictEqual(misc.formatSize(1024), "1.00KB")
-		assert.strictEqual(misc.formatSize(1024 * 1024), "1.00MB")
-		assert.strictEqual(misc.formatSize(1024 * 1024 * 1024), "1.00GB")
-		assert.strictEqual(misc.formatSize(1024 * 1024 * 1024 * 1024), "1.00TB")
+		assert.strictEqual(misc.formatSize(1024), "1KB")
+		assert.strictEqual(misc.formatSize(1024 * 1024), "1MB")
+		assert.strictEqual(misc.formatSize(1024 * 1024 * 1024), "1GB")
+		assert.strictEqual(misc.formatSize(1024 * 1024 * 1024 * 1024), "1TB")
 	}
 
 }

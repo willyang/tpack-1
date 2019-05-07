@@ -9,7 +9,6 @@
 		"newLine": "LF",
 		"stripInternal": true,
 		"preserveConstEnums": true,
-		"allowSyntheticDefaultImports": true,
 		"experimentalDecorators": true,
 		"esModuleInterop": true,
 		"resolveJsonModule": true,

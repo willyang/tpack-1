@@ -4,10 +4,11 @@ import * as esm from "../../src/utils/esm"
 export namespace esmTest {
 
 	export function transformESModuleToCommonJSTest() {
+		assert.strictEqual(esm.transformESModuleToCommonJS(`export var a = 1`), `var a = 1\nmodule.exports.a = a;`)
+
 		assert.strictEqual(esm.transformESModuleToCommonJS(`var a = 1`), `var a = 1`)
 		assert.strictEqual(esm.transformESModuleToCommonJS(`var a = "export var x"`), `var a = "export var x"`)
 
-		assert.strictEqual(esm.transformESModuleToCommonJS(`export var a = 1`), `var a = 1\nmodule.exports.a = a;`)
 		assert.strictEqual(esm.transformESModuleToCommonJS(`export let a = 1`), `let a = 1\nmodule.exports.a = a;`)
 		assert.strictEqual(esm.transformESModuleToCommonJS(`export const a = 1`), `const a = 1\nmodule.exports.a = a;`)
 		assert.strictEqual(esm.transformESModuleToCommonJS(`export function a() {}`), `function a() {}\nmodule.exports.a = a;`)

@@ -4,21 +4,22 @@
 		{
 			"type": "node",
 			"request": "launch",
-			"name": "Run All Test",
+			"name": "Run Test",
 			"runtimeExecutable": "mocha",
 			"runtimeArgs": [
-				"--timeout",
-				"999999",
-				"--colors",
 				"-r",
 				"ts-node/register",
 				"--ui",
 				"exports",
+				"--colors",
+				"--no-timeout",
 				"${workspaceFolder}/**/*.test.ts"
 			],
 			"internalConsoleOptions": "openOnSessionStart",
 			"skipFiles": [
-				"<node_internals>/**"
+				"<node_internals>/**",
+				"node_modules/mocha/**",
+				"node_modules/ts-node/**"
 			]
 		},
 		{
@@ -27,26 +28,30 @@
 			"name": "Run Current Test",
 			"runtimeExecutable": "mocha",
 			"runtimeArgs": [
-				"--timeout",
-				"999999",
-				"--colors",
 				"-r",
 				"ts-node/register",
 				"--ui",
 				"exports",
+				"--colors",
+				"--no-timeout",
 				"${file}"
 			],
 			"internalConsoleOptions": "openOnSessionStart",
 			"skipFiles": [
-				"<node_internals>/**"
+				"<node_internals>/**",
+				"node_modules/mocha/**",
+				"node_modules/ts-node/**"
 			]
 		},
 		{
 			"type": "node",
 			"request": "attach",
 			"name": "Attach",
+			"internalConsoleOptions": "openOnFirstSessionStart",
 			"skipFiles": [
-				"<node_internals>/**"
+				"<node_internals>/**",
+				"node_modules/mocha/**",
+				"node_modules/ts-node/**"
 			]
 		}
 	]

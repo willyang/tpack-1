@@ -1,4 +1,4 @@
-import { copyToMap } from "../utils/misc"
+import { objectToMap } from "../utils/misc"
 
 /** 表示一个本地化服务 */
 export class LocaleService {
@@ -16,7 +16,7 @@ export class LocaleService {
 		// 忽略字典不存在的错误
 		if (value !== "en-US") {
 			try {
-				copyToMap(require(`../../locales/${value}.json`), this.dict)
+				objectToMap(require(`../../locales/${value}.json`), this.dict)
 			} catch  { }
 		}
 	}
@@ -51,9 +51,15 @@ export class LocaleService {
 		const message = strings.reduce((x, y, index) => `${x}{${index - 1}}${y}`)
 		const translated = this.dict.get(message)
 		if (translated) {
-			return translated.replace(/\{(\d+)\}/g, (_, index) => values[index] || "")
+			return translated.replace(/\{(\d+)\}/g, (_, index) => {
+				const value = values[index]
+				return value != undefined ? value : ""
+			})
 		}
-		return strings.reduce((x, y, index) => `${x}${values[index - 1] || ""}${y}`)
+		return strings.reduce((x, y, index) => {
+			const value = values[index - 1]
+			return `${x}${value != undefined ? value : ""}${y}`
+		})
 	}
 
 }

@@ -24,7 +24,7 @@ export namespace eventEmitterTest {
 		ee.emit("foo", "arg1-error", "arg2-error")
 
 		ee.on("foo", () => false)
-		ee.on("foo", () => { assert.ok(false) })
+		ee.on("foo", () => { assert.ok(false, "Returning false will prevent rest event listeners") })
 		ee.emit("foo")
 		ee.off()
 	}

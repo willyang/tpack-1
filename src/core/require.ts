@@ -15,7 +15,7 @@ import { Resolver } from "./resolver"
  * @param logger 日志记录器
  * @returns 如果解析成功则返回绝对路径，否则将抛出异常
  */
-export async function resolveFrom(name: string, baseDir: string, installCommand: string | undefined, logger: Logger) {
+export async function resolve(name: string, baseDir: string, installCommand: string | undefined, logger: Logger) {
 	// 尝试从本地解析
 	const localRequire = Module.createRequireFromPath(baseDir + "/_.js") as typeof require
 	try {
@@ -49,12 +49,12 @@ export async function resolveFrom(name: string, baseDir: string, installCommand:
 /** 确保同时只执行一个安装命令 */
 const installQueue = new AsyncQueue()
 
-/** 正在安装的模块列表 */
-const installingModules = new Map<string, boolean>()
+/** 正在安装的包列表 */
+const installingPackages = new Map<string, boolean>()
 
 /** 重新安装的回调函数 */
-const clearInstallingModules = defer(() => {
-	installingModules.clear()
+const clearInstallingPackages = defer(() => {
+	installingPackages.clear()
 }, 2000)
 
 /**
@@ -76,19 +76,19 @@ export async function installPackage(name: string, baseDir: string, installComma
 			return false
 		}
 		// @foo/goo 更像是 NPM 上的包
-		name = name.split("/", 2).join("/")
+		name = name.replace(/^([^/]*\/[^/]*)\/.*$/s, "$1")
 	}
 	// 同时只能开启一个安装进程
 	try {
 		return await installQueue.then(async () => {
 			// 同名模块不重复安装
-			const exists = installingModules.get(name)
+			const exists = installingPackages.get(name)
 			if (exists !== undefined) {
 				return exists
 			}
 			// 安装模块
-			const command = installCommand.replace("<module>", name)
-			const installingTask = logger.begin(i18n`Installing module '${name}' via '${command.replace(/\s.*$/s, "")}'`)
+			const command = installCommand.replace("<package>", name)
+			const installingTask = logger.begin(command.replace(/\s.*$/s, ""), i18n`Installing package '${name}'`)
 			try {
 				logger.debug(`${baseDir}>${command}`)
 				const result = await exec(command, {
@@ -100,12 +100,12 @@ export async function installPackage(name: string, baseDir: string, installComma
 					}
 				})
 				const success = result.exitCode === 0
-				installingModules.set(name, success)
+				installingPackages.set(name, success)
 				if (success) {
 					logger.debug(`${result.stderr || ""}\n${result.stdout || ""}`.trim())
 				} else {
 					logger.error({
-						message: i18n`Cannot install module '${name}', try to run '${command}' manually and retry`,
+						message: i18n`Cannot install package '${name}', try to run '${command}' manually and retry`,
 						detail: `${result.stderr || ""}\n${result.stdout || ""}`.trim()
 					})
 				}
@@ -117,7 +117,7 @@ export async function installPackage(name: string, baseDir: string, installComma
 	} finally {
 		// 如果已安装当前期间所有模块，则下次可继续安装同名模块
 		if (installQueue.isEmpty) {
-			clearInstallingModules()
+			clearInstallingPackages()
 		}
 	}
 }

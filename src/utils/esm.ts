@@ -2,19 +2,19 @@
  * 快速转换 ES6 模块代码到 CommonJS 模块
  * @param code 要转换的 ES6 模块代码
  * @description 出于性能考虑，本函数有以下功能限制：
- * - 不支持导出多变量（`export let a, b`/`export let [a, b]`），需逐个导出
- * - 模板字符串内出现 `import/export` 语句可能出错，可拆分成 `"imp" + "ort"`
- * - 导出操作实际在文件末尾执行，如果有循环依赖可能无法获取导出项
+ * - 不支持同时导出多个变量（`export let a, b`/`export let [a, b]`），需逐个导出
+ * - 模板字符串内出现 `import/export` 语句可能会出错，可拆分成 `"imp" + "ort"`
+ * - 导出赋值操作会在最后执行，如果有循环依赖可能无法获取导出项
  */
 export function transformESModuleToCommonJS(code: string) {
-	let exports = ""
+	let exportCode = ""
 	code = code.replace(/'(?:[^\\'\n\r\u2028\u2029]|\\.)*'|"(?:[^\\"\n\r\u2028\u2029]|\\.)*"|\/\/.*|\/\*.*?(?:\*\/|$)|`(?:[^\\\`\$]|\\.|\$\{(?:[^{]|\{[^}]*\})*?\}|\$(?!\{))*`|\/(?:[^/\n\r\u2028\u2029]|\\.)\/|\bexport\s+((default\s+)?((?:const\b|let\b|var\b|(?:async\s*)?function\b(?:\s*\*)?|class\b)\s*)([a-zA-Z0-9_$\xAA-\uDDEF]+)|default\b)|\b(?:import\s*(?:\*\s*as\s*([a-zA-Z0-9_$\xAA-\uDDEF]+)|(\{.*?\})|([a-zA-Z0-9_$\xAA-\uDDEF]+)\s*(?:,\s*(\{.*?\}))?)\s*from|import\s*|(export)\s*\*\s*from|\bexport\s*(\{.*?\})\s*from)\s*('(?:[^\\'\n\r\u2028\u2029]|\\.)*'|"(?:[^\\"\n\r\u2028\u2029]|\\.)*")/sg, (source, exportBody, exportDefault, exportPrefix, exportName, importAll, importNames, importDefault, importNames2, exportAll, exportNames, fromModule) => {
 		if (exportBody) {
 			if (exportDefault || !exportName) {
-				exports += `\nObject.defineProperty(module.exports, "__esModule", { value: true });`
+				exportCode += `\nObject.defineProperty(module.exports, "__esModule", { value: true });`
 			}
 			if (exportName) {
-				exports += `\nmodule.exports.${exportDefault ? "default" : exportName} = ${exportName};`
+				exportCode += `\nmodule.exports.${exportDefault ? "default" : exportName} = ${exportName};`
 				return `${exportPrefix}${exportName}`
 			}
 			return `module.exports.default =`
@@ -40,5 +40,5 @@ export function transformESModuleToCommonJS(code: string) {
 		}
 		return source
 	})
-	return code + exports
+	return code + exportCode
 }

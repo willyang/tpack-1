@@ -1,12 +1,13 @@
 /**
  * 表示一个源映射（Source Map）对象
+ * @see https://sourcemaps.info/spec.html
  * @see https://docs.google.com/document/d/1U1RGAehQwRypUTovF1KRlpiOFze0b-_2gc6fAH0KY0k
  * @see http://www.alloyteam.com/2014/01/source-map-version-3-introduction/
  */
 export interface SourceMapObject {
-	/** 版本号，目前仅支持版本 3 */
+	/** 版本号 */
 	version: number
-	/** 生成的文件的路径 */
+	/** 生成文件的路径 */
 	file?: string
 	/** 所有源文件的根路径 */
 	sourceRoot?: string
@@ -14,7 +15,7 @@ export interface SourceMapObject {
 	sources: string[]
 	/** 所有源文件的内容 */
 	sourcesContent?: string[]
-	/** 所有符号名称 */
+	/** 所有符号名 */
 	names?: string[]
 	/** 所有映射点 */
 	mappings: string
@@ -22,9 +23,9 @@ export interface SourceMapObject {
 
 /** 表示一个索引映射（Index Map）对象 */
 export interface IndexMapObject {
-	/** 版本号，目前仅支持版本 3 */
+	/** 版本号 */
 	version: number
-	/** 生成的文件的路径 */
+	/** 生成文件的路径 */
 	file?: string
 	/** 所有映射段 */
 	sections: ({
@@ -53,7 +54,7 @@ export interface SourceMapGenerator {
 }
 
 /** 表示一个源映射（Source Map）数据，可以是一个字符串、对象或生成器 */
-export type SourceMapData = string | SourceMapObject | IndexMapObject | SourceMapGenerator
+export type SourceMapData = string | IndexMapObject | SourceMapObject | SourceMapGenerator
 
 /**
  * 将指定的源映射（Source Map）数据转为字符串
@@ -79,10 +80,10 @@ export function toSourceMapObject(sourceMapData: SourceMapData) {
 		sourceMapData = (sourceMapData as SourceMapGenerator).toJSON()
 	}
 	if ((sourceMapData as IndexMapObject).sections) {
-		throw new TypeError("Indexed Map is not supported.")
+		throw new TypeError("Indexed map is not supported")
 	}
 	if ((sourceMapData as SourceMapObject).version && (sourceMapData as SourceMapObject).version != 3) {
-		throw new TypeError(`Source Map v${(sourceMapData as SourceMapObject).version} is not supported.`)
+		throw new TypeError(`Source map v${(sourceMapData as SourceMapObject).version} is not supported`)
 	}
 	return sourceMapData as SourceMapObject
 }
@@ -98,15 +99,15 @@ export function toSourceMapBuilder(sourceMapData: SourceMapData) {
 	return new SourceMapBuilder(sourceMapData)
 }
 
-/** 表示一个源映射（Source Map）构建器，提供解析、读取、生成、合并源映射的所有功能 */
+/** 表示一个源映射（Source Map）构建器，用于解析、读取、生成、合并源映射 */
 export class SourceMapBuilder implements SourceMapGenerator {
 
-	// #region 属性
+	// #region 解析和格式化
 
 	/** 获取当前源映射构建器支持的版本号 */
 	get version() { return 3 }
 
-	/** 获取或设置生成的文件的路径 */
+	/** 获取或设置生成文件的路径 */
 	file?: string
 
 	/** 获取或设置所有源文件的根路径 */
@@ -118,59 +119,11 @@ export class SourceMapBuilder implements SourceMapGenerator {
 	/** 获取所有源文件的内容 */
 	readonly sourcesContent: string[] = []
 
-	/** 获取所有符号名称 */
+	/** 获取所有符号名 */
 	readonly names: string[] = []
 
 	/** 获取所有映射点 */
 	readonly mappings: Mapping[][] = []
-
-	/**
-	 * 添加一个源文件
-	 * @param sourcePath 要添加的源文件路径
-	 * @returns 返回源文件的索引
-	 */
-	addSource(sourcePath: string) {
-		let sourceIndex = this.sources.indexOf(sourcePath)
-		if (sourceIndex < 0) {
-			this.sources[sourceIndex = this.sources.length] = sourcePath
-		}
-		return sourceIndex
-	}
-
-	/**
-	 * 添加一个符号名称
-	 * @param name 要添加的名称
-	 * @returns 返回名称的索引
-	 */
-	addName(name: string) {
-		let nameIndex = this.names.indexOf(name)
-		if (nameIndex < 0) {
-			this.names[nameIndex = this.names.length] = name
-		}
-		return nameIndex
-	}
-
-	/**
-	 * 获取指定源文件的内容，如果未找到源文件或源文件内容未内联则返回 `undefined`
-	 * @param source 要获取的源文件路径
-	 */
-	getSourceContent(sourcePath: string) {
-		const sourceIndex = this.sources.indexOf(sourcePath)
-		return sourceIndex < 0 ? undefined : this.sourcesContent[sourceIndex]
-	}
-
-	/**
-	 * 设置指定源文件的内容
-	 * @param sourcePath 要设置的源文件路径
-	 * @param sourceContent 要设置的源文件内容
-	 */
-	setSourceContent(sourcePath: string, sourceContent: string) {
-		this.sourcesContent[this.addSource(sourcePath)] = sourceContent
-	}
-
-	// #endregion
-
-	// #region 解析和格式化
 
 	/**
 	 * 初始化新的源映射构建器
@@ -179,12 +132,8 @@ export class SourceMapBuilder implements SourceMapGenerator {
 	constructor(sourceMapData?: SourceMapData) {
 		if (sourceMapData) {
 			sourceMapData = toSourceMapObject(sourceMapData)
-			if (sourceMapData.file != undefined) {
-				this.file = sourceMapData.file
-			}
-			if (sourceMapData.sourceRoot != undefined) {
-				this.sourceRoot = sourceMapData.sourceRoot
-			}
+			this.file = sourceMapData.file
+			this.sourceRoot = sourceMapData.sourceRoot
 			if (sourceMapData.sources) {
 				this.sources.push(...sourceMapData.sources)
 			}
@@ -194,59 +143,59 @@ export class SourceMapBuilder implements SourceMapGenerator {
 			if (sourceMapData.names) {
 				this.names.push(...sourceMapData.names)
 			}
-			if (sourceMapData.mappings != undefined) {
+			if (sourceMapData.mappings) {
 				decodeMappings(sourceMapData.mappings, this.mappings)
 			}
 		}
 	}
 
 	toJSON() {
-		const result = {
-			version: this.version
-		} as SourceMapObject
-		if (this.file != undefined) {
-			result.file = this.file
+		const sourceMapObject = { version: this.version } as SourceMapObject
+		if (this.file !== undefined) {
+			sourceMapObject.file = this.file
 		}
-		if (this.sourceRoot != undefined) {
-			result.sourceRoot = this.sourceRoot
+		if (this.sourceRoot !== undefined) {
+			sourceMapObject.sourceRoot = this.sourceRoot
 		}
-		result.sources = this.sources
-		result.mappings = encodeMappings(this.mappings)
+		sourceMapObject.sources = this.sources
+		sourceMapObject.mappings = encodeMappings(this.mappings)
 		if (this.names.length) {
-			result.names = this.names
+			sourceMapObject.names = this.names
 		}
 		if (this.sourcesContent.length) {
-			result.sourcesContent = this.sourcesContent
+			sourceMapObject.sourcesContent = this.sourcesContent
 		}
-		return result
+		return sourceMapObject
 	}
 
 	toString() { return JSON.stringify(this) }
 
 	// #endregion
 
-	// #region 处理
+	// #region 读取
 
 	/**
-	 * 获取生成文件中指定位置的源信息，如果不存在则返回空
+	 * 获取生成文件中指定位置的源信息，如果找不到映射点则返回空
 	 * @param generatedLine 生成文件中的行号（从 0 开始）
 	 * @param generatedColumn 生成文件中的列号（从 0 开始）
-	 * @param adjustColumn 是否允许调整列以返回有效的映射点
-	 * @param adjustLine 是否允许调整行以返回有效的映射点
+	 * @param adjustColumn 是否根据映射点和指定列计算偏移后的列号
+	 * @param adjustLine 如果找不到匹配的映射点，是否往前搜索其它行的映射点并计算指定行的位置
 	 */
 	getSource(generatedLine: number, generatedColumn: number, adjustColumn = false, adjustLine = false) {
-		// 搜索当前行指定列的映射
 		const mappings = this.mappings[generatedLine]
 		if (mappings) {
 			for (let i = mappings.length; --i >= 0;) {
 				const mapping = mappings[i]
 				if (generatedColumn >= mapping.generatedColumn) {
 					const result = { mapping } as SourceLocation
-					if (mapping.sourceIndex != undefined) {
+					if (mapping.sourceIndex !== undefined) {
 						result.sourcePath = this.sources[mapping.sourceIndex]
 						result.line = mapping.sourceLine!
-						result.column = mapping.sourceColumn! + (adjustColumn ? generatedColumn - mapping.generatedColumn : 0)
-						if (mapping.nameIndex != undefined) {
+						result.column = mapping.sourceColumn!
+						if (adjustColumn) {
+							result.column += generatedColumn - mapping.generatedColumn
+						}
+						if (mapping.nameIndex !== undefined) {
 							result.name = this.names[mapping.nameIndex]
 						}
 					}
@@ -254,7 +203,7 @@ export class SourceMapBuilder implements SourceMapGenerator {
 				}
 			}
 		}
-		// 当前行不存在对应的映射，就近搜索映射信息
+		// 往前搜索其它行的映射点并计算当前行的位置
 		if (adjustLine) {
 			for (let i = generatedLine; --i >= 0;) {
 				const mappings = this.mappings[i]
@@ -265,9 +214,6 @@ export class SourceMapBuilder implements SourceMapGenerator {
 						result.sourcePath = this.sources[mapping.sourceIndex]
 						result.line = mapping.sourceLine! + generatedLine - i
 						result.column = adjustColumn ? generatedColumn : 0
-						if (mapping.nameIndex != undefined) {
-							result.name = this.names[mapping.nameIndex]
-						}
 					}
 					return result
 				}
@@ -292,19 +238,18 @@ export class SourceMapBuilder implements SourceMapGenerator {
 				if (mappings) {
 					for (const mapping of mappings) {
 						if (mapping.sourceIndex === sourceIndex && mapping.sourceLine === sourceLine) {
-							// 如果列为空则只需满足行
-							if (sourceColumn == undefined) {
+							if (sourceColumn === undefined) {
 								result.push({
 									mapping,
 									line: i,
 									column: mapping.generatedColumn
 								})
 							} else {
-								// 需要找到指定的源位置之前但更近或者一样近的映射点
 								const columnOffset = sourceColumn - mapping.sourceColumn!
 								if (columnOffset >= 0 && columnOffset <= minColumnOffset) {
-									// 当找到更近的映射点时，只保留最近的映射点
-									if (columnOffset !== minColumnOffset) {
+									// 需要计算与指定列最近的映射点（可能有多个）
+									// 当找到更近的映射点时，删除已添加的映射点
+									if (columnOffset < minColumnOffset) {
 										result.length = 0
 									}
 									result.push({
@@ -325,24 +270,76 @@ export class SourceMapBuilder implements SourceMapGenerator {
 
 	/**
 	 * 遍历所有映射点并调用指定的函数
-	 * @param callback 遍历的回调函数
-	 * * @param generatedLine 生成的行号（从 0 开始）
-	 * * @param generatedColumn 生成的列号（从 0 开始）
-	 * * @param sourcePath 映射的源文件路径或索引
-	 * * @param sourceLine 映射的源文件行号（从 0 开始）
-	 * * @param sourceColumn 映射的源文件列号（从 0 开始）
-	 * * @param name 映射的符合名称
-	 * * @param mapping 原始映射点
+	 * @param callback 遍历的回调函数，函数如果返回 `false` 则停止遍历
+	 * @param callback.generatedLine 生成文件的行号（从 0 开始）
+	 * @param callback.generatedColumn 生成文件的列号（从 0 开始）
+	 * @param callback.sourcePath 源文件的路径
+	 * @param callback.sourceLine 源文件的行号（从 0 开始）
+	 * @param callback.sourceColumn 源文件的列号（从 0 开始）
+	 * @param callback.name 符号名
+	 * @param callback.mapping 原始映射点
+	 * @returns 如果回调函数返回 `false`，则返回 `false`，否则返回 `true`
 	 */
-	eachMapping(callback: (generatedLine: number, generatedColumn: number, sourcePath: string | undefined, sourceContent: string | undefined, sourceLine: number | undefined, sourceColumn: number | undefined, name: string | undefined, mapping: Mapping) => void) {
+	eachMapping(callback: (generatedLine: number, generatedColumn: number, sourcePath: string | undefined, sourceLine: number | undefined, sourceColumn: number | undefined, name: string | undefined, mapping: Mapping) => void | boolean) {
 		for (let i = 0; i < this.mappings.length; i++) {
 			const mappings = this.mappings[i]
 			if (mappings) {
 				for (const mapping of mappings) {
-					callback(i, mapping.generatedColumn, mapping.sourceIndex == undefined ? undefined : this.sources[mapping.sourceIndex], mapping.sourceIndex == undefined ? undefined : this.sourcesContent[mapping.sourceIndex], mapping.sourceLine, mapping.sourceColumn, mapping.nameIndex == undefined ? undefined : this.names[mapping.nameIndex], mapping)
+					if (callback(i, mapping.generatedColumn, mapping.sourceIndex !== undefined ? this.sources[mapping.sourceIndex] : undefined, mapping.sourceLine, mapping.sourceColumn, mapping.nameIndex !== undefined ? this.names[mapping.nameIndex] : undefined, mapping) === false) {
+						return false
+					}
 				}
 			}
 		}
+		return true
+	}
+
+	// #endregion
+
+	// #region 生成
+
+	/**
+	 * 添加一个源文件
+	 * @param sourcePath 要添加的源文件路径
+	 * @returns 返回源文件的索引
+	 */
+	addSource(sourcePath: string) {
+		let sourceIndex = this.sources.indexOf(sourcePath)
+		if (sourceIndex < 0) {
+			this.sources[sourceIndex = this.sources.length] = sourcePath
+		}
+		return sourceIndex
+	}
+
+	/**
+	 * 获取指定源文件的内容，如果未找到源文件内容则返回 `undefined`
+	 * @param sourcePath 要获取的源文件路径
+	 */
+	getSourceContent(sourcePath: string) {
+		const sourceIndex = this.sources.indexOf(sourcePath)
+		return sourceIndex < 0 ? undefined : this.sourcesContent[sourceIndex]
+	}
+
+	/**
+	 * 设置指定源文件的内容
+	 * @param sourcePath 要设置的源文件路径
+	 * @param sourceContent 要设置的源文件内容
+	 */
+	setSourceContent(sourcePath: string, sourceContent: string) {
+		this.sourcesContent[this.addSource(sourcePath)] = sourceContent
+	}
+
+	/**
+	 * 添加一个符号名
+	 * @param name 要添加的符号名
+	 * @returns 返回符号名的索引
+	 */
+	addName(name: string) {
+		let nameIndex = this.names.indexOf(name)
+		if (nameIndex < 0) {
+			this.names[nameIndex = this.names.length] = name
+		}
+		return nameIndex
 	}
 
 	/**
@@ -350,20 +347,18 @@ export class SourceMapBuilder implements SourceMapGenerator {
 	 * @param generatedLine 生成的行号（从 0 开始）
 	 * @param generatedColumn 生成的列号（从 0 开始）
 	 * @param sourcePath 映射的源文件路径或索引
-	 * @param sourceLine 映射的源文件行号（从 0 开始）
-	 * @param sourceColumn 映射的源文件列号（从 0 开始）
-	 * @param name 映射的符号名称或索引
-	 * @returns 返回添加的映射点对象
+	 * @param sourceLine 映射的源文件行号（从 0 开始），如果 `sourcePath` 不为 `undefined`，则 `sourceLine` 不为 `undefined`
+	 * @param sourceColumn 映射的源文件列号（从 0 开始），如果 `sourcePath` 不为 `undefined`，则 `sourceColumn` 不为 `undefined`
+	 * @param name 符号名或索引
+	 * @returns 返回添加的映射点
 	 */
 	addMapping(generatedLine: number, generatedColumn: number, sourcePath?: string | number, sourceLine?: number, sourceColumn?: number, name?: string | number) {
-		const mapping: Mapping = {
-			generatedColumn: generatedColumn
-		}
-		if (sourcePath != undefined) {
+		const mapping: Mapping = { generatedColumn: generatedColumn }
+		if (sourcePath !== undefined) {
 			mapping.sourceIndex = typeof sourcePath === "number" ? sourcePath : this.addSource(sourcePath)
-			mapping.sourceLine = sourceLine
-			mapping.sourceColumn = sourceColumn
-			if (name != undefined) {
+			mapping.sourceLine = sourceLine!
+			mapping.sourceColumn = sourceColumn!
+			if (name !== undefined) {
 				mapping.nameIndex = typeof name === "number" ? name : this.addName(name)
 			}
 		}
@@ -372,15 +367,12 @@ export class SourceMapBuilder implements SourceMapGenerator {
 		if (!mappings) {
 			this.mappings[generatedLine] = [mapping]
 		} else if (!mappings.length || generatedColumn >= mappings[mappings.length - 1].generatedColumn) {
+			// 实际项目中，一般都是按顺序添加映射点，所以优先判断是否直接插入到末尾
 			mappings.push(mapping)
 		} else {
 			for (let i = mappings.length; --i >= 0;) {
 				if (generatedColumn >= mappings[i].generatedColumn) {
-					if (generatedColumn === mappings[i].generatedColumn) {
-						mappings[i] = mapping
-					} else {
-						mappings.splice(i + 1, 0, mapping)
-					}
+					mappings.splice(i + 1, 0, mapping)
 					return mapping
 				}
 			}
@@ -391,83 +383,63 @@ export class SourceMapBuilder implements SourceMapGenerator {
 
 	/**
 	 * 合并新的源映射
-	 * @param other 要合并的源映射
-	 * @param file 要合并的源映射所属的生成文件，如果为空则使用第一个源码信息
+	 * @param sourceMap 要合并的源映射构建器
 	 * @description
 	 * 假如有源文件 A，通过一次生成得到 B，其源映射记作 S1；
 	 * 然后 B 通过再次生成得到 C，其源映射记作 S2；
 	 * 此时需要调用 `S2.applySourceMap(S1)`，将 S2 更新为 A 到 C 的源映射
+	 * 
+	 * > ##### 注意
+	 * > 1. 函数仅返回合并的源映射和当前源映射的最小交集
+	 * > 2. 所有路径都应该是绝对路径，且区分大小写
+	 * > 3. `sourceRoot` 会被忽略
 	 */
-	applySourceMap(other: SourceMapBuilder, file = other.file) {
-		const sourceIndex = file != undefined ? this.sources.indexOf(file) : 0
+	applySourceMap(sourceMap: SourceMapBuilder) {
+		const sourceIndex = this.sources.indexOf(sourceMap.file!)
 		if (sourceIndex < 0) {
 			return
 		}
+		// 删除指定源文件的所有信息
 		this.sources.splice(sourceIndex, 1)
 		this.sourcesContent.splice(sourceIndex, 1)
+		// 存储新源映射中所有源路径和符号名更新后的新索引
 		const sourceIndexMapping: number[] = []
-		for (let i = 0; i < other.sources.length; i++) {
-			const newIndex = sourceIndexMapping[i] = this.addSource(other.sources[i])
-			if (other.sourcesContent && other.sourcesContent[i] !== undefined) {
-				this.sourcesContent[newIndex] = other.sourcesContent[i]
+		for (let i = 0; i < sourceMap.sources.length; i++) {
+			const newIndex = sourceIndexMapping[i] = this.addSource(sourceMap.sources[i])
+			if (sourceMap.sourcesContent[i] !== undefined) {
+				this.sourcesContent[newIndex] = sourceMap.sourcesContent[i]
 			}
 		}
-		let nameIndexMapping: number[] | undefined
-		if (other.names) {
-			nameIndexMapping = []
-			for (let i = 0; i < other.names.length; i++) {
-				nameIndexMapping[i] = this.addName(other.names[i])
+		const nameIndexMapping: number[] = []
+		if (sourceMap.names) {
+			for (let i = 0; i < sourceMap.names.length; i++) {
+				nameIndexMapping[i] = this.addName(sourceMap.names[i])
 			}
 		}
 		for (const mappings of this.mappings) {
 			if (mappings) {
 				for (const mapping of mappings) {
 					if (mapping.sourceIndex === sourceIndex) {
-						const source = mapping.sourceLine !== undefined && mapping.sourceColumn !== undefined ? other.getSource(mapping.sourceLine, mapping.sourceColumn, true, true) : null
-						if (source && source.mapping.sourceIndex !== undefined) {
-							mapping.sourceIndex = sourceIndexMapping[source.mapping.sourceIndex]
-							mapping.sourceLine = source.line
-							mapping.sourceColumn = source.column
-							if (nameIndexMapping && source.mapping.nameIndex != undefined) {
-								mapping.nameIndex = nameIndexMapping[source.mapping.nameIndex]
+						const source = sourceMap.getSource(mapping.sourceLine!, mapping.sourceColumn!, true, true)
+						if (source && source.sourcePath !== undefined) {
+							mapping.sourceIndex = sourceIndexMapping[source.mapping.sourceIndex!]
+							mapping.sourceLine = source.line!
+							mapping.sourceColumn = source.column!
+							if (source.name !== undefined) {
+								mapping.nameIndex = nameIndexMapping[source.mapping.nameIndex!]
 							} else {
 								delete mapping.nameIndex
 							}
 						} else {
+							// 当前映射点无可用的新映射信息，为避免影响后续映射点计算逻辑，仅清空映射点但不删除
 							delete mapping.sourceIndex
 							delete mapping.sourceLine
 							delete mapping.sourceColumn
 							delete mapping.nameIndex
 						}
 					} else if (mapping.sourceIndex! > sourceIndex) {
+						// 由于原 sourceIndex 已删除，后续的 sourceIndex 需前移一位 
 						mapping.sourceIndex!--
-					}
-				}
-			}
-		}
-	}
-
-	/**
-	 * 根据现有的映射点自动计算并填补后续行首列的映射点（如果不存在），以确保每行都能正确映射到源码
-	 * @param startLine 开始计算的行号（从 0 开始）
-	 * @param endLine 结束计算的行号（从 0 开始）
-	 */
-	computeLines(startLine = 0, endLine = this.mappings.length) {
-		for (; startLine < endLine; startLine++) {
-			const mappings = this.mappings[startLine] || (this.mappings[startLine] = [])
-			if (!mappings[0] || mappings[0].generatedColumn > 0) {
-				for (let line = startLine; --line >= 0;) {
-					const last = this.mappings[line] && this.mappings[line][0]
-					if (last) {
-						if (last.sourceIndex != undefined) {
-							mappings.unshift({
-								generatedColumn: 0,
-								sourceIndex: last.sourceIndex,
-								sourceLine: last.sourceLine! + startLine - line,
-								sourceColumn: 0
-							})
-						}
-						break
 					}
 				}
 			}
@@ -484,11 +456,17 @@ export interface Mapping {
 	generatedColumn: number
 	/** 源文件的索引（从 0 开始）*/
 	sourceIndex?: number
-	/** 源文件中的行号（从 0 开始）*/
+	/** 
+	 * 源文件中的行号（从 0 开始）
+	 * @description 如果 `sourceIndex` 不为 `undefined`，则 `sourceLine` 不为 `undefined`
+	 */
 	sourceLine?: number
-	/** 源文件中的列号（从 0 开始）*/
+	/** 
+	 * 源文件中的列号（从 0 开始）
+	 * @description 如果 `sourceIndex` 不为 `undefined`，则 `sourceLine` 不为 `undefined`
+	 */
 	sourceColumn?: number
-	/** 源符号名称的索引（从 0 开始）*/
+	/** 符号名的索引（从 0 开始）*/
 	nameIndex?: number
 }
 
@@ -502,7 +480,7 @@ export interface SourceLocation {
 	line?: number
 	/** 源文件中的列号（从 0 开始）*/
 	column?: number
-	/** 源符号名称 */
+	/** 符号名 */
 	name?: string
 }
 
@@ -535,17 +513,17 @@ function encodeMappings(allMappings: Mapping[][]) {
 					mappingString += ","
 				}
 				const mapping = mappings[j]
-				mappingString += encodeBase64Vlq(mapping.generatedColumn - prevColumn)
+				mappingString += encodeBase64VLQ(mapping.generatedColumn - prevColumn)
 				prevColumn = mapping.generatedColumn
 				if (mapping.sourceIndex != undefined && mapping.sourceLine != undefined && mapping.sourceColumn != undefined) {
-					mappingString += encodeBase64Vlq(mapping.sourceIndex - prevSourceIndex)
+					mappingString += encodeBase64VLQ(mapping.sourceIndex - prevSourceIndex)
 					prevSourceIndex = mapping.sourceIndex
-					mappingString += encodeBase64Vlq(mapping.sourceLine - prevSourceLine)
+					mappingString += encodeBase64VLQ(mapping.sourceLine - prevSourceLine)
 					prevSourceLine = mapping.sourceLine
-					mappingString += encodeBase64Vlq(mapping.sourceColumn - prevSourceColumn)
+					mappingString += encodeBase64VLQ(mapping.sourceColumn - prevSourceColumn)
 					prevSourceColumn = mapping.sourceColumn
 					if (mapping.nameIndex != undefined) {
-						mappingString += encodeBase64Vlq(mapping.nameIndex - prevNameIndex)
+						mappingString += encodeBase64VLQ(mapping.nameIndex - prevNameIndex)
 						prevNameIndex = mapping.nameIndex
 					}
 				}
@@ -569,7 +547,7 @@ function decodeMappings(mappingString: string, allMappings: Mapping[][]) {
 		let ch = mappingString.charCodeAt(context.index)
 		if (ch !== 59 /*;*/ && ch !== 44 /*,*/) {
 			const mapping: Mapping = {
-				generatedColumn: prevColumn += decodeBase64Vlq(mappingString, context)
+				generatedColumn: prevColumn += decodeBase64VLQ(mappingString, context)
 			}
 			mappings.push(mapping)
 			if (context.index === mappingString.length) {
@@ -577,15 +555,15 @@ function decodeMappings(mappingString: string, allMappings: Mapping[][]) {
 			}
 			ch = mappingString.charCodeAt(context.index)
 			if (ch !== 59 /*;*/ && ch !== 44 /*,*/) {
-				mapping.sourceIndex = prevSourceIndex += decodeBase64Vlq(mappingString, context)
-				mapping.sourceLine = prevSourceLine += decodeBase64Vlq(mappingString, context)
-				mapping.sourceColumn = prevSourceColumn += decodeBase64Vlq(mappingString, context)
+				mapping.sourceIndex = prevSourceIndex += decodeBase64VLQ(mappingString, context)
+				mapping.sourceLine = prevSourceLine += decodeBase64VLQ(mappingString, context)
+				mapping.sourceColumn = prevSourceColumn += decodeBase64VLQ(mappingString, context)
 				if (context.index === mappingString.length) {
 					break
 				}
 				ch = mappingString.charCodeAt(context.index)
 				if (ch !== 59 /*;*/ && ch !== 44 /*,*/) {
-					mapping.nameIndex = prevNameIndex += decodeBase64Vlq(mappingString, context)
+					mapping.nameIndex = prevNameIndex += decodeBase64VLQ(mappingString, context)
 					if (context.index === mappingString.length) {
 						break
 					}
@@ -604,7 +582,7 @@ function decodeMappings(mappingString: string, allMappings: Mapping[][]) {
 const base64Chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/".split("")
 
 /** 编码一个 Base64-VLQ 值 */
-function encodeBase64Vlq(value: number) {
+function encodeBase64VLQ(value: number) {
 	let result = ""
 	let vlq = value < 0 ? ((-value) << 1) + 1 : (value << 1)
 	do {
@@ -616,7 +594,7 @@ function encodeBase64Vlq(value: number) {
 }
 
 /** 解码一个 Base64-VLQ 值 */
-function decodeBase64Vlq(value: string, context: { index: number }) {
+function decodeBase64VLQ(value: string, context: { index: number }) {
 	let vlq = 0
 	let shift = 0
 	let digit: number
@@ -650,28 +628,36 @@ export function getSourceMappingURL(content: string) {
  * 在指定内容插入一个 `#sourceMappingURL` 注释，如果注释已存在则更新
  * @param content 要插入或更新的内容
  * @param sourceMapURL 要插入或更新的源映射地址，如果地址为空则删除已存在的注释
- * @param singleLineComment 如果为 `true` 则插入单行注释，否则插入多行注释
+ * @param singleLineComment 如果为 `true` 则插入单行注释，否则插入多行注释，如果已经存在注释，则保留现有注释风格
  */
 export function setSourceMappingURL(content: string, sourceMapURL: string | null, singleLineComment?: boolean) {
-	let found = false
+	let append = sourceMapURL != null
 	content = content.replace(/(?:\/\/(?:[#@]\ssourceMappingURL=([^\s'"]*))|\/\*(?:\s*\r?\n(?:\/\/)?)?(?:[#@]\ssourceMappingURL=([^\s'"]*))\s*\*\/)\s*/, (_, singleLineComment: any) => {
-		found = true
-		if (sourceMapURL) {
-			return createSourceMappingURLComment(sourceMapURL, singleLineComment)
+		if (append) {
+			append = false
+			return createSourceMappingURLComment(sourceMapURL!, singleLineComment)
 		}
 		return ""
 	})
-	if (!found && sourceMapURL) {
-		content += `\n${createSourceMappingURLComment(sourceMapURL, singleLineComment)}`
+	if (append) {
+		content += `\n${createSourceMappingURLComment(sourceMapURL!, singleLineComment)}`
 	}
 	return content
 }
 
 /**
  * 生成一个 `#sourceMappingURL` 注释
- * @param sourceMapURL 要添加或更新的源映射地址
+ * @param sourceMapURL 源映射地址
  * @param singleLineComment 如果为 `true` 则返回单行注释，否则返回多行注释
  */
 export function createSourceMappingURLComment(sourceMapURL: string, singleLineComment?: boolean) {
-	return singleLineComment ? `//# sourceMappingURL=${sourceMapURL}` : `/*# sourceMappingURL=${sourceMapURL} */`
+	return singleLineComment ? `//\# sourceMappingURL=${sourceMapURL}` : `/*\# sourceMappingURL=${sourceMapURL} */`
+}
+
+/**
+ * 生成一个 `#sourceURL` 注释
+ * @param sourceURL 源地址
+ */
+export function createSourceURLComment(sourceMapURL: string) {
+	return `//\# sourceURL=${sourceMapURL}`
 }

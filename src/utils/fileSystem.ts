@@ -1,8 +1,8 @@
-import { appendFile, constants, copyFile, link, lstat, mkdir, readdir, readFile, readlink, realpath, rename, rmdir, stat, Stats, symlink, unlink, writeFile } from "fs"
-import { dirname, join } from "path"
-import { Matcher, Pattern, PatternOptions } from "./matcher"
+import { access, appendFile, constants, copyFile, link, lstat, mkdir, readdir, readFile, readlink, realpath, rename, rmdir, stat, Stats, symlink, unlink, writeFile } from "fs"
+import { dirname, join, resolve as resolvePath } from "path"
+import { Matcher, Pattern, MatcherOptions } from "./matcher"
 import { escapeRegExp } from "./misc"
-import { isCaseInsensitive } from "./path"
+import { appendName, isCaseInsensitive } from "./path"
 
 /** 表示一个文件系统 */
 export class FileSystem {
@@ -11,28 +11,13 @@ export class FileSystem {
 	readonly isCaseInsensitive = isCaseInsensitive
 
 	/**
-	 * 获取文件或文件夹的属性，如果是文件链接则返回链接实际引用的文件属性
+	 * 获取文件或文件夹的属性
 	 * @param path 要获取的路径
+	 * @param resolveLink 如果是软链接，是否解析链接引用的路径属性
 	 */
-	getStat(path: string) {
+	getStat(path: string, resolveLink = true) {
 		return new Promise<Stats>((resolve, reject) => {
-			stat(path, (error, stats) => {
-				if (error) {
-					reject(error)
-				} else {
-					resolve(stats)
-				}
-			})
-		})
-	}
-
-	/**
-	 * 获取文件或文件夹的属性，如果是文件链接则返回链接本身的文件属性
-	 * @param path 要获取的路径
-	 */
-	getLinkStat(path: string) {
-		return new Promise<Stats>((resolve, reject) => {
-			lstat(path, (error, stats) => {
+			(resolveLink ? stat : lstat)(path, (error, stats) => {
 				if (error) {
 					reject(error)
 				} else {
@@ -46,30 +31,40 @@ export class FileSystem {
 	 * 判断指定的文件是否存在
 	 * @param path 要判断的路径
 	 */
-	async existsFile(path: string) {
-		try {
-			return (await this.getStat(path)).isFile()
-		} catch (e) {
-			if (e.code === "ENOENT") {
-				return false
-			}
-			throw e
-		}
+	existsFile(path: string) {
+		return new Promise<boolean>((resolve, reject) => {
+			stat(path, (error, stats) => {
+				if (error) {
+					if (error.code === "ENOENT") {
+						resolve(false)
+					} else {
+						reject(error)
+					}
+				} else {
+					resolve(stats.isFile())
+				}
+			})
+		})
 	}
 
 	/**
 	 * 判断指定的文件夹是否存在
 	 * @param path 要判断的路径
 	 */
-	async existsDir(path: string) {
-		try {
-			return (await this.getStat(path)).isDirectory()
-		} catch (e) {
-			if (e.code === "ENOENT") {
-				return false
-			}
-			throw e
-		}
+	existsDir(path: string) {
+		return new Promise<boolean>((resolve, reject) => {
+			stat(path, (error, stats) => {
+				if (error) {
+					if (error.code === "ENOENT") {
+						resolve(false)
+					} else {
+						reject(error)
+					}
+				} else {
+					resolve(stats.isDirectory())
+				}
+			})
+		})
 	}
 
 	/**
@@ -77,24 +72,24 @@ export class FileSystem {
 	 * @param path 要测试的文件或文件夹路径
 	 * @param append 如果路径已存在则添加的文件名后缀，其中的数字会递增直到文件不存在
 	 */
-	async ensureNotExists(path: string, append = "_2"): Promise<string> {
-		// 如果文件不存在则直接返回
-		try {
-			await this.getStat(path)
-		} catch (e) {
-			if (e.code === "ENOENT") {
-				return path
-			}
-		}
-		// 尝试重命名
-		let newPath = path.replace(new RegExp(`^((?:[^\\\\/]*[\\/\\\\])*[^\\.]*${escapeRegExp(append).replace(/\d+/, ")(\\d+)(")})`), (_, prefix, index, postfix) => {
-			append = null!
-			return prefix + (+index + 1) + postfix
+	async ensureNotExists(path: string, append?: string): Promise<string> {
+		return new Promise<string>((resolve, reject) => {
+			access(path, error => {
+				if (error && error.code === "ENOENT") {
+					resolve(path)
+				} else {
+					if (!append) append = "_2"
+					path = path.replace(new RegExp(`^((?:[^\\\\/]*[\\/\\\\])*[^\\.]*${escapeRegExp(append).replace(/\d+/, ")(\\d+)(")})`), (_, prefix, index, postfix) => {
+						append = null!
+						return prefix + (+index + 1) + postfix
+					})
+					if (append) {
+						path = appendName(path, append)
+					}
+					this.ensureNotExists(path, append).then(resolve, reject)
+				}
+			})
 		})
-		if (append) {
-			newPath = path.replace(/^(?:[^\\/]*[\/\\])*[^\.]*/, `$&${append}`)
-		}
-		return await this.ensureNotExists(newPath, append)
 	}
 
 	/**
@@ -122,9 +117,7 @@ export class FileSystem {
 							// http://stackoverflow.com/questions/62771/how-do-i-check-if-a-given-string-is-a-legal-valid-file-name-under-windows/62888
 							this.ensureDirExists(path).then(() => {
 								this.createDir(path).then(resolve, reject)
-							}, () => {
-								reject(error)
-							})
+							}, reject)
 							break
 						case "EEXIST":
 							// 路径已存在，测试是否是文件夹
@@ -167,10 +160,8 @@ export class FileSystem {
 								this.cleanDir(path).then(result => {
 									this.deleteDir(path, false).then(() => {
 										resolve(result)
-									}).catch(reject)
-								}, () => {
-									reject(error)
-								})
+									}, reject)
+								}, reject)
 							} else {
 								reject(error)
 							}
@@ -206,24 +197,25 @@ export class FileSystem {
 						let count = 0
 						for (const entry of entries) {
 							const child = join(path, entry)
-							lstat(child, async (error, stats) => {
+							lstat(child, (error, stats) => {
 								if (error) {
 									reject(error)
+								} else if (stats.isDirectory()) {
+									this.deleteDir(child).then(childCount => {
+										count += childCount
+										if (--pending === 0) {
+											resolve(count)
+										}
+									}, reject)
 								} else {
-									try {
-										if (stats.isDirectory()) {
-											const childCount = await this.deleteDir(child)
-											count += childCount
-										} else {
-											await this.deleteFile(child)
+									this.deleteFile(child).then(success => {
+										if (success) {
 											count++
 										}
-									} catch (e) {
-										reject(e)
-									}
-								}
-								if (--pending < 1) {
-									resolve(count)
+										if (--pending === 0) {
+											resolve(count)
+										}
+									}, reject)
 								}
 							})
 						}
@@ -245,14 +237,14 @@ export class FileSystem {
 		if (parent === path) {
 			return Promise.resolve(false)
 		}
-		return new Promise<boolean>(resolve => {
+		return new Promise<boolean>((resolve, reject) => {
 			rmdir(parent, error => {
 				if (error) {
 					resolve(false)
 				} else {
 					this.deleteParentDirIfEmpty(parent).then(() => {
 						resolve(true)
-					})
+					}, reject)
 				}
 			})
 		})
@@ -267,13 +259,10 @@ export class FileSystem {
 		return new Promise<boolean>((resolve, reject) => {
 			unlink(path, error => {
 				if (error) {
-					switch (error.code) {
-						case "ENOENT":
-							resolve(false)
-							break
-						default:
-							reject(error)
-							break
+					if (error.code === "ENOENT") {
+						resolve(false)
+					} else {
+						reject(error)
 					}
 				} else {
 					resolve(true)
@@ -304,12 +293,12 @@ export class FileSystem {
 							return safeCall(readdir, [path], (error, entries) => {
 								if (error) {
 									options.error && options.error(error, path)
-								} else if (!options.scan || options.scan(path, entries, stats) !== false) {
+								} else if (!options.walkDir || options.walkDir(path, entries, stats) !== false) {
 									for (const entry of entries) {
 										walk(join(path, entry))
 									}
 								}
-								if (--pending < 1) {
+								if (--pending === 0) {
 									resolve()
 								}
 							})
@@ -317,7 +306,7 @@ export class FileSystem {
 					} else {
 						options.other && options.other(path, stats)
 					}
-					if (--pending < 1) {
+					if (--pending === 0) {
 						resolve()
 					}
 				})
@@ -331,16 +320,21 @@ export class FileSystem {
 	 * @param options 查找的选项
 	 * @returns 返回所有匹配文件的绝对路径
 	 */
-	async glob(pattern: Pattern, options: PatternOptions = {}) {
-		const matcher = pattern instanceof Matcher ? pattern : new Matcher(pattern, options)
+	async glob(pattern: Pattern, options?: MatcherOptions) {
+		const matcher = new Matcher({
+			cwd: options && options.cwd ? resolvePath(options.cwd) : process.cwd(),
+			ignoreCase: options && options.ignoreCase !== undefined ? options.ignoreCase : this.isCaseInsensitive
+		})
+		matcher.include(pattern)
+		const excludeMatcher = matcher.excludeMatcher
 		const files: string[] = []
-		await Promise.all(matcher.getBases(options.ignoreCase).map(base => this.walk(base, {
-			dir: matcher.excludeMatcher ? path => !matcher.excludeMatcher!.test(path) : undefined,
+		await Promise.all(matcher.getBases().map(base => this.walk(base, {
+			dir: excludeMatcher ? path => !excludeMatcher.test(path) : undefined,
 			file(path) {
 				if (matcher.test(path)) {
 					files.push(path)
 				}
-			},
+			}
 		})))
 		return files
 	}
@@ -364,26 +358,40 @@ export class FileSystem {
 	/**
 	 * 读取指定文件的二进制内容
 	 * @param path 要读取的文件路径
+	 * @param throwOnNotFound 是否在文件不存在时抛出错误，如果设为 `false`，则文件不存在时返回空
 	 */
-	readFile(path: string): Promise<Buffer>
+	readFile(path: string, throwOnNotFound: false): Promise<Buffer | null>
+
+	/**
+	 * 读取指定文件的二进制内容
+	 * @param path 要读取的文件路径
+	 * @param throwOnNotFound 是否在文件不存在时抛出错误，如果设为 `false`，则文件不存在时返回空
+	 */
+	readFile(path: string, throwOnNotFound?: boolean): Promise<Buffer>
 
 	/**
 	 * 读取指定文件的文本内容
 	 * @param path 要读取的文件路径
-	 * @param throwOnNotFound 是否在文件不存在时抛出错误
+	 * @param encoding 文件的编码
+	 * @param throwOnNotFound 是否在文件不存在时抛出错误，如果设为 `false`，则文件不存在时返回空
 	 */
 	readFile(path: string, encoding: string, throwOnNotFound: false): Promise<string | null>
 
 	/**
 	 * 读取指定文件的文本内容
 	 * @param path 要读取的文件路径
-	 * @param throwOnNotFound 是否在文件不存在时抛出错误
+	 * @param encoding 文件的编码
+	 * @param throwOnNotFound 是否在文件不存在时抛出错误，如果设为 `false`，则文件不存在时返回空
 	 */
 	readFile(path: string, encoding: string, throwOnNotFound?: boolean): Promise<string>
 
 	readFile(path: string, encoding?: string | boolean, throwOnNotFound?: boolean) {
+		if (typeof encoding === "boolean") {
+			throwOnNotFound = encoding
+			encoding = undefined
+		}
 		return new Promise<string | Buffer | null>((resolve, reject) => {
-			safeCall(readFile, [path, encoding], (error, entries) => {
+			safeCall(readFile, [path, encoding], (error, data: string | Buffer) => {
 				if (error) {
 					if (throwOnNotFound === false && error.code === "ENOENT") {
 						resolve(null)
@@ -391,7 +399,7 @@ export class FileSystem {
 						reject(error)
 					}
 				} else {
-					resolve(entries)
+					resolve(data)
 				}
 			})
 		})
@@ -412,9 +420,7 @@ export class FileSystem {
 						case "ENOENT":
 							this.ensureDirExists(path).then(() => {
 								this.writeFile(path, data, overwrite).then(resolve, reject)
-							}, () => {
-								reject(error)
-							})
+							}, reject)
 							break
 						case "EEXIST":
 							if (overwrite) {
@@ -447,9 +453,7 @@ export class FileSystem {
 						case "ENOENT":
 							this.ensureDirExists(path).then(() => {
 								this.appendFile(path, data).then(resolve, reject)
-							}, () => {
-								reject(error)
-							})
+							}, reject)
 							break
 						default:
 							reject(error)
@@ -471,44 +475,61 @@ export class FileSystem {
 	 */
 	createLink(path: string, target: string, overwrite = true) {
 		return new Promise<boolean>((resolve, reject) => {
-			lstat(target, (error, stats) => {
-				const done = (error: NodeJS.ErrnoException | null) => {
-					if (error) {
-						switch (error.code) {
-							case "ENOENT":
-								this.ensureDirExists(path).then(() => {
-									this.createLink(path, target, overwrite).then(resolve, reject)
-								}, () => {
-									reject(error)
-								})
-								break
-							case "EEXIST":
-								if (overwrite) {
-									this.deleteFile(path).then(() => {
-										this.createLink(path, target, false).then(() => {
-											resolve(true)
-										}, reject)
-									}, () => {
-										reject(error)
-									})
-								} else {
-									resolve(false)
-								}
-								break
-							default:
-								reject(error)
-								break
-						}
-					} else {
-						resolve(true)
+			const callback = (error: NodeJS.ErrnoException | null) => {
+				if (error) {
+					switch (error.code) {
+						case "ENOENT":
+							this.ensureDirExists(path).then(() => {
+								this.createLink(path, target, overwrite).then(resolve, reject)
+							}, reject)
+							break
+						case "EEXIST":
+							if (overwrite) {
+								this.deleteFile(path).then(() => {
+									this.createLink(path, target, false).then(resolve, reject)
+								}, reject)
+							} else {
+								resolve(false)
+							}
+							break
+						default:
+							reject(error)
+							break
 					}
-				}
-				if (error || stats.isDirectory()) {
-					symlink(target, path, "junction", done)
 				} else {
-					link(target, path, done)
+					resolve(true)
 				}
-			})
+			}
+			if (process.platform === "win32") {
+				this.existsDir(target).then(isDir => {
+					symlink(target, path, isDir ? "dir" : "file", error => {
+						// Windows 需要管理员权限才能创建软链接，尝试使用其它方式
+						if (error && error.code === "EPERM") {
+							if (isDir) {
+								symlink(resolvePath(path, "..", target), path, "junction", error => {
+									if (error) {
+										reject(error)
+									} else {
+										resolve(true)
+									}
+								})
+							} else {
+								link(target, path, error => {
+									if (error) {
+										reject(error)
+									} else {
+										resolve(true)
+									}
+								})
+							}
+						} else {
+							callback(error)
+						}
+					})
+				}, reject)
+			} else {
+				symlink(target, path, callback)
+			}
 		})
 	}
 
@@ -569,12 +590,12 @@ export class FileSystem {
 										} catch (e) {
 											firstError = firstError || e
 										}
-										if (--pending < 1) {
-											if (firstError) {
-												reject(firstError)
-											} else {
-												resolve(count)
-											}
+									}
+									if (--pending === 0) {
+										if (firstError) {
+											reject(firstError)
+										} else {
+											resolve(count)
 										}
 									}
 								})
@@ -603,9 +624,7 @@ export class FileSystem {
 						case "ENOENT":
 							this.ensureDirExists(dest).then(() => {
 								this.copyFile(src, dest, overwrite).then(resolve, reject)
-							}, () => {
-								reject(error)
-							})
+							}, reject)
 							break
 						case "EEXIST":
 							resolve(false)
@@ -632,7 +651,25 @@ export class FileSystem {
 		return new Promise<boolean>((resolve, reject) => {
 			this.readLink(src).then(link => {
 				this.createLink(dest, link, overwrite).then(resolve, reject)
-			}, reject)
+			}, () => {
+				link(src, dest, error => {
+					if (error) {
+						if (error.code === "EEXIST") {
+							if (overwrite) {
+								this.deleteFile(dest).then(() => {
+									this.copyLink(src, dest, false).then(resolve, reject)
+								}, reject)
+							} else {
+								resolve(false)
+							}
+						} else {
+							reject(error)
+						}
+					} else {
+						resolve(true)
+					}
+				})
+			})
 		})
 	}
 
@@ -677,20 +714,20 @@ export class FileSystem {
 										} catch (e) {
 											firstError = firstError || e
 										}
-										if (--pending < 1) {
-											if (firstError) {
-												reject(firstError)
-											} else {
-												this.deleteDir(src, false).then(() => {
+									}
+									if (--pending === 0) {
+										if (firstError) {
+											reject(firstError)
+										} else {
+											this.deleteDir(src, false).then(() => {
+												resolve(count)
+											}, (error: NodeJS.ErrnoException) => {
+												if (error.code === "ENOTEMPTY" || error.code === "EEXIST") {
 													resolve(count)
-												}, (error: NodeJS.ErrnoException) => {
-													if (error.code === "ENOTEMPTY" || error.code === "EEXIST") {
-														resolve(count)
-													} else {
-														reject(error)
-													}
-												})
-											}
+												} else {
+													reject(error)
+												}
+											})
 										}
 									}
 								})
@@ -715,6 +752,7 @@ export class FileSystem {
 	 */
 	moveFile(src: string, dest: string, overwrite = true) {
 		return new Promise<boolean>((resolve, reject) => {
+			// 原生的 rename 会直接覆盖且不抛错误
 			if (overwrite) {
 				rename(src, dest, error => {
 					if (error) {
@@ -728,13 +766,15 @@ export class FileSystem {
 					}
 				})
 			} else {
-				this.getStat(dest).then(() => {
-					resolve(false)
-				}, (error: NodeJS.ErrnoException) => {
-					if (error.code === "ENOENT") {
-						resolve(this.moveFile(src, dest, true))
+				access(dest, error => {
+					if (error) {
+						if (error.code === "ENOENT") {
+							this.moveFile(src, dest, true).then(resolve, reject)
+						} else {
+							reject(error)
+						}
 					} else {
-						reject(error)
+						resolve(false)
 					}
 				})
 			}
@@ -808,7 +848,7 @@ export interface WalkOptions {
 	 * @param entries 当前文件夹下的所有项
 	 * @param stats 当前文件夹的属性对象
 	 */
-	scan?(path: string, entries: string[], stats: Stats): boolean | void
+	walkDir?(path: string, entries: string[], stats: Stats): boolean | void
 	/**
 	 * 处理一个其它类型文件的回调函数
 	 * @param path 当前文件的路径
@@ -818,13 +858,13 @@ export interface WalkOptions {
 }
 
 /** 安全调用系统 IO 函数，如果出现 EMFILE 错误则自动延时 */
-function safeCall(func: DelayedCall["function"], args: DelayedCall["arguments"], callback: DelayedCall["callback"]) {
+function safeCall(func: DelayedCall["sysCall"], args: DelayedCall["arguments"], callback: DelayedCall["callback"]) {
 	func(...args, (error: NodeJS.ErrnoException, data: any) => {
 		if (error) {
 			switch (error.code) {
 				case "EMFILE":
 				case "ENFILE":
-					delay({ function: func, arguments: args, callback })
+					delay({ sysCall: func, arguments: args, callback })
 					break
 				case "EAGAIN":
 					safeCall(func, args, callback)
@@ -844,7 +884,7 @@ function safeCall(func: DelayedCall["function"], args: DelayedCall["arguments"],
 /** 表示一个延时调用 */
 interface DelayedCall {
 	/** 调用的函数 */
-	function: (...args: any[]) => void
+	sysCall: (...args: any[]) => void
 	/** 调用的参数 */
 	arguments: any[]
 	/** 调用的回调函数 */
@@ -886,7 +926,7 @@ function resume() {
 		} else {
 			delayedCallQueue.next = head.next
 		}
-		safeCall(head.function, head.arguments, head.callback)
+		safeCall(head.sysCall, head.arguments, head.callback)
 		// 如果所有延时操作都已执行完成，则删除计时器
 		if (!delayedCallQueue && delayedCallTimer) {
 			clearTimeout(delayedCallTimer)

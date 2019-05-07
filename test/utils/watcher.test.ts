@@ -14,11 +14,26 @@ export namespace watcherTest {
 		await uninit()
 	}
 
+	export async function watchDirAndCreateFile() {
+		await new Promise(resolve => {
+			const w = new watcher.Watcher()
+			w.delay = 10
+			w.on("create", path => {
+				assert.strictEqual(path, resolvePath("foo/你好.txt"))
+				assert.strictEqual(fs.readFileSync("foo/你好.txt", "utf-8"), "A")
+				w.close(resolve)
+			})
+			w.add(root, () => {
+				fs.mkdirSync("foo/")
+				fs.writeFileSync("foo/你好.txt", "A")
+			})
+		})
+	}
+
 	export async function watchDirAndChangeFile() {
 		await new Promise(resolve => {
 			const w = new watcher.Watcher()
 			w.delay = 10
-			w.on("delete", path => { assert.fail(path) })
 			w.on("create", path => {
 				assert.strictEqual(path, resolvePath("foo/你好.txt"))
 				assert.strictEqual(fs.readFileSync("foo/你好.txt", "utf-8"), "A")
@@ -70,6 +85,37 @@ export namespace watcherTest {
 		})
 	}
 
+	export async function watchDirAndDeleteDir() {
+		await new Promise(resolve => {
+			const w = new watcher.Watcher()
+			w.delay = 10
+			w.on("createDir", path => {
+				assert.strictEqual(path, resolvePath("foo"))
+				fs.rmdirSync("foo")
+			})
+			w.on("deleteDir", path => {
+				assert.strictEqual(path, resolvePath("foo"))
+				w.close(resolve)
+			})
+			w.add(root, () => {
+				fs.mkdirSync("foo")
+			})
+		})
+		await new Promise(resolve => {
+			const w = new watcher.Watcher()
+			w.delay = 10
+			w.on("createDir", path => { assert.fail(path) })
+			w.on("deleteDir", path => { assert.fail(path) })
+			w.add(root, () => {
+				fs.mkdirSync("foo")
+				fs.rmdirSync("foo")
+				setTimeout(() => {
+					w.close(resolve)
+				}, 12)
+			})
+		})
+	}
+
 	export async function watchFileAndChangeFile() {
 		// MAC 有时需要 7s
 		this.timeout(10000)
@@ -112,6 +158,7 @@ export namespace watcherTest {
 			w.on("delete", path => {
 				assert.strictEqual(path, resolvePath("foo/你好.txt"))
 				assert.strictEqual(fs.existsSync("foo/你好.txt"), false)
+
 				w.close(resolve)
 			})
 			w.on("create", path => { assert.fail(path) })
@@ -156,25 +203,44 @@ export namespace watcherTest {
 		})
 	}
 
-	if (process.platform !== "darwin" && new watcher.Watcher().watchOptions.recursive) {
-		for (const key in watcherTest) {
-			if (!/^(?:before|after)/.test(key)) {
-				watcherTest[key + "Slow"] = function () {
-					const oldAdd = watcher.Watcher.prototype.add
-					const oldClose = watcher.Watcher.prototype.close
-					watcher.Watcher.prototype.add = function () {
-						this.watchOptions.recursive = false
-						return oldAdd.apply(this, arguments)
+	export async function ignoredTest() {
+		await new Promise(resolve => {
+			const w = new watcher.Watcher()
+			w.delay = 10
+			w.ignored = () => true
+			w.on("create", path => { assert.fail(path) })
+			w.add(root, () => {
+				fs.mkdirSync("foo/")
+				fs.writeFileSync("foo/你好.txt", "A")
+				setTimeout(() => {
+					w.close(resolve)
+				}, 12)
+			})
+		})
+	}
+
+	export namespace recursiveTest {
+		if (process.platform !== "darwin" && new watcher.Watcher().watchOptions.recursive) {
+			for (const key in watcherTest) {
+				if (key.endsWith("Test") && key !== "recursiveTest") {
+					recursiveTest[key] = function () {
+						const oldAdd = watcher.Watcher.prototype.add
+						const oldClose = watcher.Watcher.prototype.close
+						watcher.Watcher.prototype.add = function () {
+							this.watchOptions.recursive = false
+							return oldAdd.apply(this, arguments)
+						}
+						watcher.Watcher.prototype.close = function () {
+							watcher.Watcher.prototype.add = oldAdd
+							watcher.Watcher.prototype.close = oldClose
+							return oldClose.apply(this, arguments)
+						}
+						return watcherTest[key].call(this, arguments)
 					}
-					watcher.Watcher.prototype.close = function () {
-						watcher.Watcher.prototype.add = oldAdd
-						watcher.Watcher.prototype.close = oldClose
-						return oldClose.apply(this, arguments)
-					}
-					return watcherTest[key].call(this, arguments)
 				}
 			}
 		}
+
 	}
 
 }

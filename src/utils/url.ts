@@ -18,8 +18,8 @@ export function resolveURL(base: string, url: string) {
  * @example relativeURL("a/b/c", "a/b/d") // "../d"
  */
 export function relativeURL(base: string, url: string) {
-	// 忽略特殊地址
-	if (/^[\w+\-\.]+:(?:[^/]|$)/.test(url)) {
+	// 忽略 data:...
+	if (/^[\w+\-\.\+]+:(?!\/)/.test(url)) {
 		return url
 	}
 	const baseObj = parse(base, false, true)
@@ -36,7 +36,7 @@ export function relativeURL(base: string, url: string) {
 		return format(urlObj)
 	}
 	// base 和 url 必须同时是相对路径或绝对路径，否则不处理
-	if (baseObj.pathname && urlObj.pathname && (baseObj.pathname.charCodeAt(0) === 47/*/*/) !== (urlObj.pathname.charCodeAt(0) === 47/*/*/)) {
+	if (baseObj.pathname && urlObj.pathname && (baseObj.pathname.charCodeAt(0) === 47 /*/*/) !== (urlObj.pathname.charCodeAt(0) === 47 /*/*/)) {
 		return format(urlObj)
 	}
 	// 计算相同的开头部分，以分隔符为界
@@ -77,7 +77,7 @@ export function relativeURL(base: string, url: string) {
  * @example normalizeURL("./abc.js") // "abc.js"
  */
 export function normalizeURL(url: string) {
-	if (!url || /^[\w+\-\.]+:(?:[^/]|$)/.test(url)) {
+	if (!url || /^[\w+\-\.\+]+:(?!\/)/.test(url)) {
 		return url
 	}
 	const urlObj = parse(url, false, true)

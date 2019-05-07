@@ -55,7 +55,7 @@ export class Watcher extends EventEmitter {
 						watcher.root = false
 					}
 					// 开始监听子文件夹
-					if (!watcher && typeof value === "object") {
+					if (!watcher && typeof value !== "number") {
 						try {
 							this.createNativeWatcher(key, false)
 						} catch (e) {
@@ -124,7 +124,7 @@ export class Watcher extends EventEmitter {
 
 	// #region 底层监听
 
-	/** 存储所有原生监听器对象 */
+	/** 所有原生监听器对象 */
 	private readonly _watchers = new Map<string, NativeFSWatcher>()
 
 	/**
@@ -134,7 +134,7 @@ export class Watcher extends EventEmitter {
 	 */
 	protected createNativeWatcher(path: string, root: boolean) {
 		const isFile = typeof this._stats.get(path) === "number"
-		const polling = this.usePolling != undefined ? this.usePolling : isFile
+		const polling = this.usePolling !== undefined ? this.usePolling : isFile
 		let watcher: NativeFSWatcher
 		if (polling) {
 			const listener = () => {
@@ -170,19 +170,14 @@ export class Watcher extends EventEmitter {
 
 	/** 获取或设置传递给原生监听器的选项 */
 	watchOptions = {
-
 		/** 是否持久监听，如果设为 `false` 则在监听到一次改动后立即退出监听 */
 		persistent: true,
-
 		/** 是否使用原生的递归监听支持 */
 		recursive: (parseFloat(process.version.slice(1)) > 4 || /^v4\.(?:[5-9]|\d{2,})/.test(process.version)) && (process.platform === "win32" || process.platform === "darwin"),
-
 		/** 默认文件名编码 */
 		encoding: "buffer",
-
 		/** 轮询的间隔毫秒数 */
-		interval: 500,
-
+		interval: 512,
 	}
 
 	/**
@@ -217,15 +212,15 @@ export class Watcher extends EventEmitter {
 	 * 获取或设置监听延时回调的毫秒数
 	 * @description 设置一定的延时可以避免在短时间内重复处理相同的文件
 	 */
-	delay = 151
+	delay = 256
 
 	/** 判断或设置是否采用轮询的方案 */
 	usePolling?: boolean
 
-	/** 存储所有已挂起的发生改变的路径 */
+	/** 所有已挂起的发生改变的路径 */
 	private readonly _pendingChanges = new Set<string>()
 
-	/** 存储等待解析已挂起的更改的计时器 */
+	/** 等待解析已挂起的更改的计时器 */
 	private _resolveChangesTimer?: any
 
 	/**
@@ -233,19 +228,22 @@ export class Watcher extends EventEmitter {
 	 * @param watcher 目标监听器
 	 */
 	private static _resolveChanges(watcher: Watcher) {
-		delete watcher._resolveChangesTimer
+		watcher._resolveChangesTimer = undefined
 		for (const pendingChange of watcher._pendingChanges) {
-			if (typeof watcher._stats.get(pendingChange) === "object") {
-				watcher._updateDirStats(pendingChange)
-			} else {
+			if (typeof watcher._stats.get(pendingChange) === "number") {
 				watcher._updateFileStats(pendingChange)
+			} else {
+				watcher._updateDirStats(pendingChange)
 			}
 		}
 		watcher._pendingChanges.clear()
 	}
 
+	/** 正在执行的异步任务数 */
+	private _pending = 0
+
 	/**
-	 * 存储所有状态对象，对象的键是绝对路径
+	 * 所有状态对象，对象的键是绝对路径
 	 * 如果路径是一个文件夹，则值为所有直接子文件和子文件夹的名称数组
 	 * 如果路径是一个文件，则值为文件的最后修改时间
 	 */
@@ -259,11 +257,11 @@ export class Watcher extends EventEmitter {
 	 */
 	private _initStats(path: string, callback: (error: NodeJS.ErrnoException | null) => void, stats?: Stats) {
 		const oldStats = this._stats.get(path)
-		if (oldStats != undefined) {
-			if (typeof oldStats === "object") {
-				this._initDirStats(path, callback, oldStats)
-			} else {
+		if (oldStats !== undefined) {
+			if (typeof oldStats === "number") {
 				callback(null)
+			} else {
+				this._initDirStats(path, callback, oldStats)
 			}
 		} else if (!stats) {
 			this._pending++
@@ -273,31 +271,33 @@ export class Watcher extends EventEmitter {
 				} else {
 					this._initStats(path, callback, stats)
 				}
-				if (--this._pending < 1) {
+				if (--this._pending === 0) {
 					this.emit("idle")
 				}
 			})
 		} else if (stats.isFile()) {
-			this._stats.set(path, stats.mtime.getTime())
+			this._stats.set(path, stats.mtimeMs)
 			callback(null)
 		} else if (stats.isDirectory()) {
 			this._pending++
 			readdir(path, (error, entries) => {
-				if (!error) {
+				if (error) {
+					if (error.code === "EMFILE" || error.code === "ENFILE") {
+						this._pending++
+						setTimeout(() => {
+							this._initStats(path, callback, stats)
+							if (--this._pending === 0) {
+								this.emit("idle")
+							}
+						}, this.delay)
+					} else {
+						callback(error)
+					}
+				} else {
 					this._stats.set(path, entries)
 					this._initDirStats(path, callback, entries)
-				} else if (error.code === "EMFILE" || error.code === "ENFILE") {
-					this._pending++
-					setTimeout(() => {
-						this._initStats(path, callback, stats)
-						if (--this._pending < 1) {
-							this.emit("idle")
-						}
-					}, this.delay)
-				} else {
-					callback(error)
 				}
-				if (--this._pending < 1) {
+				if (--this._pending === 0) {
 					this.emit("idle")
 				}
 			})
@@ -312,28 +312,27 @@ export class Watcher extends EventEmitter {
 	 */
 	private _initDirStats(path: string, callback: (error: NodeJS.ErrnoException | null) => void, entries: string[]) {
 		let pending = entries.length
-		if (!pending) {
-			callback(null)
-		} else {
+		if (pending) {
 			let firstError: NodeJS.ErrnoException | null = null
 			for (const entry of entries) {
 				const child = join(path, entry)
 				if (!this.ignored(child)) {
 					this._initStats(child, error => {
-						firstError = firstError || error
-						if (--pending < 1) {
+						if (error && !firstError) {
+							firstError = error
+						}
+						if (--pending === 0) {
 							callback(firstError)
 						}
 					})
-				} else if (--pending < 1) {
+				} else if (--pending === 0) {
 					callback(firstError)
 				}
 			}
+		} else {
+			callback(null)
 		}
 	}
-
-	/** 存储正在执行的异步任务数 */
-	private _pending = 0
 
 	/**
 	 * 更新指定文件的状态对象
@@ -349,7 +348,7 @@ export class Watcher extends EventEmitter {
 					this.onError(error, path)
 				}
 			} else if (stats.isFile()) {
-				const newMTime = stats.mtime.getTime()
+				const newMTime = stats.mtimeMs
 				const prevStats = this._stats.get(path)
 				if (typeof prevStats === "number") {
 					if (prevStats !== newMTime) {
@@ -357,7 +356,7 @@ export class Watcher extends EventEmitter {
 						this.onChange(path, stats, prevStats)
 					}
 				} else {
-					if (prevStats != undefined) {
+					if (prevStats !== undefined) {
 						this._removeStats(path)
 					}
 					this._stats.set(path, newMTime)
@@ -366,7 +365,7 @@ export class Watcher extends EventEmitter {
 			} else if (stats.isDirectory()) {
 				this._updateDirStats(path)
 			}
-			if (--this._pending < 1) {
+			if (--this._pending === 0) {
 				this.emit("idle")
 			}
 		})
@@ -400,7 +399,7 @@ export class Watcher extends EventEmitter {
 				const prevStats = this._stats.get(path)
 				if (typeof prevStats === "object") {
 					for (const entry of prevStats) {
-						if (entries.indexOf(entry) < 0) {
+						if (!entries.includes(entry)) {
 							this._removeStats(join(path, entry))
 						}
 					}
@@ -421,9 +420,9 @@ export class Watcher extends EventEmitter {
 						}
 					}
 				}
-				if (--this._pending < 1) {
-					this.emit("idle")
-				}
+			}
+			if (--this._pending === 0) {
+				this.emit("idle")
 			}
 		})
 	}
@@ -434,20 +433,21 @@ export class Watcher extends EventEmitter {
 	 */
 	private _removeStats(path: string) {
 		const prevStats = this._stats.get(path)
-		if (prevStats != undefined) {
-			this._stats.delete(path)
-			if (typeof prevStats === "number") {
-				this.onDelete(path, prevStats)
-			} else {
-				const watcher = this._watchers.get(path)
-				if (watcher && !watcher.root) {
-					this.removeNativeWatcher(path)
-				}
-				for (const entry of prevStats) {
-					this._removeStats(join(path, entry))
-				}
-				this.onDeleteDir(path, prevStats)
+		if (prevStats === undefined) {
+			return
+		}
+		this._stats.delete(path)
+		if (typeof prevStats === "number") {
+			this.onDelete(path, prevStats)
+		} else {
+			const watcher = this._watchers.get(path)
+			if (watcher && !watcher.root) {
+				this.removeNativeWatcher(path)
 			}
+			for (const entry of prevStats) {
+				this._removeStats(join(path, entry))
+			}
+			this.onDeleteDir(path, prevStats)
 		}
 	}
 
@@ -459,7 +459,7 @@ export class Watcher extends EventEmitter {
 	 * 判断是否忽略指定的路径
 	 * @param path 要判断的文件或文件夹绝对路径
 	 */
-	protected ignored(path: string) { return false }
+	ignored(path: string) { return false }
 
 	/**
 	 * 当监听到文件删除后执行
@@ -509,69 +509,61 @@ export class Watcher extends EventEmitter {
 }
 
 export interface Watcher {
-
 	/**
 	 * 绑定一个文件删除事件
 	 * @param event 要绑定的事件名
 	 * @param listener 要绑定的事件监听器
-	 * * @param path 相关的文件绝对路径
-	 * * @param lastWriteTime 最后修改时间
+	 * @param listener.path 相关的文件绝对路径
+	 * @param listener.lastWriteTime 最后修改时间
 	 */
 	on(event: "delete", listener: (path: string, lastWriteTime: number) => void): this
-
 	/**
 	 * 绑定一个文件夹删除事件
 	 * @param event 要绑定的事件名
 	 * @param listener 要绑定的事件监听器
-	 * * @param path 相关的文件夹绝对路径
-	 * * @param lastEntries 最后文件列表
+	 * @param listener.path 相关的文件夹绝对路径
+	 * @param listener.lastEntries 最后文件列表
 	 */
 	on(event: "deleteDir", listener: (path: string, lastEntries: string[]) => void): this
-
 	/**
 	 * 绑定一个文件创建事件
 	 * @param event 要绑定的事件名
 	 * @param listener 要绑定的事件监听器
-	 * * @param path 相关的文件绝对路径
-	 * * @param stats 文件属性对象
+	 * @param listener.path 相关的文件绝对路径
+	 * @param listener.stats 文件属性对象
 	 */
 	on(event: "create", listener: (path: string, stats: Stats) => void): this
-
 	/**
 	 * 绑定一个文件夹删除事件
 	 * @param event 要绑定的事件名
 	 * @param listener 要绑定的事件监听器
-	 * * @param path 相关的文件夹绝对路径
-	 * * @param entries 文件列表
+	 * @param listener.path 相关的文件夹绝对路径
+	 * @param listener.entries 文件列表
 	 */
 	on(event: "createDir", listener: (path: string, entries: string[]) => void): this
-
 	/**
 	 * 绑定一个文件改变事件
 	 * @param event 要绑定的事件名
 	 * @param listener 要绑定的事件监听器
-	 * * @param path 相关的文件绝对路径
-	 * * @param stats 相关的文件属性对象
-	 * * @param lastWriteTime 最后修改时间
+	 * @param listener.path 相关的文件绝对路径
+	 * @param listener.stats 相关的文件属性对象
+	 * @param listener.lastWriteTime 最后修改时间
 	 */
 	on(event: "change", listener: (path: string, stats: Stats, lastWriteTime: number) => void): this
-
 	/**
 	 * 绑定一个错误事件
 	 * @param event 要绑定的事件名
 	 * @param listener 要绑定的事件监听器
-	 * * @param error 相关的错误对象
-	 * * @param path 相关的文件绝对路径
+	 * @param listener.error 相关的错误对象
+	 * @param listener.path 相关的文件绝对路径
 	 */
 	on(event: "error", listener: (error: NodeJS.ErrnoException, path: string) => void): this
-
 	/**
 	 * 绑定一个事件
 	 * @param event 要绑定的事件名
 	 * @param listener 要绑定的事件监听器
 	 */
 	on(event: string | symbol, listener: Function): this
-
 }
 
 /** 表示一个原生监听器 */

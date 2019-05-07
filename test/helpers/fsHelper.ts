@@ -1,5 +1,5 @@
 import * as assert from "assert"
-import * as fs from "fs"
+import fs = require("fs")
 import { join, resolve } from "path"
 
 /** 原工作目录 */
@@ -83,7 +83,7 @@ function deleteEntry(path: string) {
 	if (!fs.existsSync(path)) {
 		return
 	}
-	if (fs.statSync(path).isDirectory()) {
+	if (fs.lstatSync(path).isDirectory()) {
 		for (const entry of fs.readdirSync(path)) {
 			deleteEntry(join(path, entry))
 		}
@@ -137,25 +137,33 @@ function retryIfError<T>(callback: () => T, times = 3) {
  * @param sysCall 要模拟错误的系统调用
  * @param errorCodes 要模拟的错误代码
  */
-export async function simulateIOError<T>(func: () => T, sysCall: string, errorCodes = ["UNKNOWN"]) {
-	let index = 0
-	const original = fs[sysCall]
-	fs[sysCall] = (...args: any[]) => {
-		if (index >= errorCodes.length) {
-			fs[sysCall] = original
+export async function simulateIOError<T>(func: () => T | Promise<T>, errorCodes = ["UNKNOWN"]) {
+	const originalFS = {}
+	for (const key of ["appendFile", "copyFile", "lstat", "mkdir", "readdir", "readFile", "realpath", "rename", "rmdir", "stat", "unlink", "writeFile"]) {
+		const original = fs[key]
+		originalFS[key] = original
+		let index = 0
+		fs[key] = (...args: any[]) => {
+			if (index < errorCodes.length) {
+				const error = new Error("Simulated IO Error") as NodeJS.ErrnoException
+				error.code = errorCodes[index++]
+				if (args.length && typeof args[args.length - 1] === "function") {
+					return args[args.length - 1](error)
+				} else {
+					throw error
+				}
+			}
+			fs[key] = original
+			delete originalFS[key]
 			return original(...args)
 		}
-		const error = new Error("Simulated IO Error") as NodeJS.ErrnoException
-		error.code = errorCodes[index++]
-		if (typeof args[args.length - 1] === "function") {
-			return args[args.length - 1](error)
-		} else {
-			throw error
-		}
 	}
+	fs.realpath.native = fs.realpath
 	try {
 		return await func()
 	} finally {
-		fs[sysCall] = original
+		for (const key in originalFS) {
+			fs[key] = originalFS[key]
+		}
 	}
 }

@@ -1,8 +1,8 @@
 import { basename, dirname, extname, isAbsolute, join, normalize, relative, resolve, sep } from "path"
 
 /**
- * 解析指定路径对应的绝对路径
- * @param paths 要解析的路径
+ * 获取指定路径对应的绝对路径
+ * @param paths 要处理的路径
  * @returns 返回以 `/`(非 Windows) 或 `\`(Windows) 为分隔符的绝对路径，路径末尾多余的分隔符会被删除
  * @example resolvePath("foo/goo/hoo", "../relative")
  */
@@ -11,27 +11,27 @@ export function resolvePath(...paths: string[]) {
 }
 
 /**
- * 解析指定路径对应的相对路径
- * @param base 要解析的基路径
- * @param path 要解析的路径
+ * 获取指定路径对应的相对路径
+ * @param base 要使用的基路径
+ * @param path 要处理的路径
  * @returns 返回以 `/` 为分隔符的相对路径，路径末尾多余的分隔符会被删除
  * @example relativePath("foo/goo/hoo", "foo/goo/relative") // "../relative"
  */
 export function relativePath(base: string, path: string) {
 	path = relative(base, path)
-	return sep === "/" ? path : path.split(sep).join("/")
+	return sep === '/' ? path : path.replace(/\\/g, '/')
 }
 
 /**
- * 规范化指定的路径格式
+ * 规范化指定的路径
  * @param path 要处理的路径
- * @returns 如果路径是绝对路径，返回以 `/`(非 Windows) 或 `\`(Windows) 为分隔符的绝对路径，否则返回以 `/` 为分隔符的相对路径，路径末尾多余的分隔符会被保留
+ * @returns 返回以 `/` 为分隔符的路径，路径末尾多余的分隔符不会被删除
  * @example normalizePath("foo/") // "foo/"
  * @example normalizePath("./foo.js") // "foo.js"
  */
 export function normalizePath(path: string) {
 	path = normalize(path)
-	return sep === "/" || isAbsolute(path) ? path : path.split(sep).join("/")
+	return path === "." ? "" : sep === '/' ? path : path.replace(/\\/g, '/')
 }
 
 /**
@@ -46,10 +46,11 @@ export function isAbsolutePath(path: string) {
 /**
  * 获取指定路径的文件夹部分
  * @param path 要处理的路径
- * @example getDir("/root/foo.txt") // "/root/"
+ * @example getDir("/root/foo.txt") // "/root"
  */
 export function getDir(path: string) {
-	return dirname(path)
+	path = dirname(path)
+	return path === "." ? "" : path
 }
 
 /**
@@ -64,24 +65,24 @@ export function getDir(path: string) {
 export function setDir(path: string, value: string, base?: string) {
 	if (base) {
 		base = relative(base, path)
-		if (isAbsolutePath(base) || base.startsWith(".." + sep)) {
+		if (isAbsolute(base) || base.startsWith(".." + sep)) {
 			return path
 		}
 	} else {
 		base = basename(path)
 	}
 	path = join(value, base)
-	return sep === "/" || isAbsolutePath(path) ? path : path.split(sep).join("/")
+	return sep === '/' || isAbsolute(path) ? path : path.replace(/\\/g, '/')
 }
 
 /**
  * 获取指定路径的文件名部分
  * @param path 要处理的路径
- * @param includeExt 如果为 `true`（默认）则包含扩展名，否则不包含扩展名（含点）
- * @example getFileName("/root/foo.txt") // "foo.txt"
- * @example getFileName("/root/foo.txt", false) // "foo"
+ * @param includeExt 如果为 `true`（默认）则包含扩展名（含点），否则不包含扩展名
+ * @example getName("/root/foo.txt") // "foo.txt"
+ * @example getName("/root/foo.txt", false) // "foo"
  */
-export function getFileName(path: string, includeExt = true) {
+export function getName(path: string, includeExt = true) {
 	return basename(path, includeExt ? undefined : extname(path))
 }
 
@@ -89,11 +90,11 @@ export function getFileName(path: string, includeExt = true) {
  * 设置指定路径的文件名部分
  * @param path 要处理的路径
  * @param value 要更改的新文件名
- * @param includeExt 如果为 `true`（默认）则同时更改扩展名，否则保留原扩展名（含点）
- * @example setFileName("/root/foo.txt", "goo.jpg") // "/root/goo.jpg"
- * @example setFileName("/root/foo.txt", "goo", false) // "/root/goo.jpg"
+ * @param includeExt 如果为 `true`（默认）则同时更改扩展名（含点），否则保留原扩展名
+ * @example setName("/root/foo.txt", "goo.jpg") // "/root/goo.jpg"
+ * @example setName("/root/foo.txt", "goo", false) // "/root/goo.jpg"
  */
-export function setFileName(path: string, value: string, includeExt = true) {
+export function setName(path: string, value: string, includeExt = true) {
 	const base = basename(path)
 	return path.slice(0, path.lastIndexOf(base)) + value + (includeExt ? "" : extname(base))
 }
@@ -102,19 +103,19 @@ export function setFileName(path: string, value: string, includeExt = true) {
  * 在指定路径的文件名前追加内容
  * @param path 要处理的路径
  * @param value 要追加的内容
- * @example prependFileName("foo/goo.txt", "fix_") // "foo/fix_goo.txt"
+ * @example prependName("foo/goo.txt", "fix_") // "foo/fix_goo.txt"
  */
-export function prependFileName(path: string, value: string) {
-	return setFileName(path, value + getFileName(path))
+export function prependName(path: string, value: string) {
+	return setName(path, value + getName(path))
 }
 
 /**
  * 在指定路径的文件名（不含扩展名部分）后追加内容
  * @param path 要处理的路径
  * @param value 要追加的内容
- * @example appendFileName("foo/goo.src.txt", "_fix") // "foo/goo_fix.src.txt"
+ * @example appendName("foo/goo.src.txt", "_fix") // "foo/goo_fix.src.txt"
  */
-export function appendFileName(path: string, value: string) {
+export function appendName(path: string, value: string) {
 	const base = basename(path)
 	const dot = base.indexOf(".")
 	return path.slice(0, path.lastIndexOf(base)) + (dot < 0 ? base : base.substr(0, dot)) + value + (dot < 0 ? "" : base.substr(dot))
@@ -148,18 +149,13 @@ export function setExt(path: string, value: string) {
 export const isCaseInsensitive = process.platform === "win32" || process.platform === "darwin" || process.platform === "freebsd" || process.platform === "openbsd"
 
 /**
- * 判断两个路径的绝对路径是否相同
+ * 判断两个路径是否相同
  * @param path1 要判断的第一个路径
  * @param path2 要判断的第二个路径
  * @param ignoreCase 是否忽略路径的大小写
  * @example pathEquals("/root", "/root") // true
  */
-export function pathEquals(path1: string | undefined | null, path2: string | undefined | null, ignoreCase = isCaseInsensitive) {
-	if (path1 == null || path2 == null) {
-		return path1 === path2
-	}
-	path1 = resolve(path1)
-	path2 = resolve(path2)
+export function pathEquals(path1: string, path2: string, ignoreCase = isCaseInsensitive) {
 	if (path1.length !== path2.length) {
 		return false
 	}
@@ -179,8 +175,6 @@ export function pathEquals(path1: string | undefined | null, path2: string | und
  * @example containsPath("/root/foo", "/root/goo") // false
  */
 export function containsPath(parent: string, child: string, ignoreCase = isCaseInsensitive) {
-	parent = resolve(parent)
-	child = resolve(child)
 	if (child.length < parent.length) {
 		return false
 	}
@@ -188,13 +182,15 @@ export function containsPath(parent: string, child: string, ignoreCase = isCaseI
 		parent = parent.toLowerCase()
 		child = child.toLowerCase()
 	}
-	if (child.length === parent.length) {
-		return child === parent
+	if (!child.startsWith(parent)) {
+		return false
 	}
-	if (parent.charAt(parent.length - 1) !== sep) {
-		parent += sep
+	const endChar = parent.charCodeAt(parent.length - 1)
+	if (endChar === 47 /*/*/ || endChar === 92 /*\*/ || endChar !== endChar /*NaN*/) {
+		return true
 	}
-	return child.startsWith(parent)
+	const ch = child.charCodeAt(parent.length)
+	return ch === 47 /*/*/ || ch === 92 /*\*/ || ch !== ch /*NaN*/
 }
 
 /**
@@ -204,7 +200,7 @@ export function containsPath(parent: string, child: string, ignoreCase = isCaseI
  * @param ignoreCase 是否忽略路径的大小写
  * @returns 返回 `path1` 或 `path2`，如果没有公共部分则返回空
  */
-export function deepestPath(path1: string | null, path2: string | null, ignoreCase = isCaseInsensitive) {
+export function deepestPath(path1: string | null | undefined, path2: string | null | undefined, ignoreCase = isCaseInsensitive) {
 	if (path1 == null || path2 == null) {
 		return null
 	}
@@ -222,15 +218,13 @@ export function deepestPath(path1: string | null, path2: string | null, ignoreCa
  * @param path1 要处理的第一个路径
  * @param path2 要处理的第二个路径
  * @param ignoreCase 是否忽略路径的大小写
- * @returns 返回以 `/`(非 Windows) 或 `\`(Windows) 为分隔符的绝对路径，如果没有公共部分则返回空
+ * @returns 如果没有公共部分则返回空
  * @example commonDir("/root/foo", "/root/foo/goo") // "/root/foo"
  */
-export function commonDir(path1: string | null, path2: string | null, ignoreCase = isCaseInsensitive) {
+export function commonDir(path1: string | null | undefined, path2: string | null | undefined, ignoreCase = isCaseInsensitive) {
 	if (path1 == null || path2 == null) {
 		return null
 	}
-	path1 = resolve(path1)
-	path2 = resolve(path2)
 	// 确保 path1.length <= path2.length
 	if (path1.length > path2.length) {
 		[path1, path2] = [path2, path1]
@@ -238,16 +232,15 @@ export function commonDir(path1: string | null, path2: string | null, ignoreCase
 	// 计算相同的开头部分，以分隔符为界
 	let index = -1
 	let i = 0
-	const sepCode = sep.charCodeAt(0)
 	for (; i < path1.length; i++) {
 		let ch1 = path1.charCodeAt(i)
 		let ch2 = path2.charCodeAt(i)
 		// 如果不区分大小写则将 ch1 和 ch2 全部转小写
 		if (ignoreCase) {
-			if (ch1 >= 65 /*A*/ && ch1 <= 90/*Z*/) {
+			if (ch1 >= 65 /*A*/ && ch1 <= 90 /*Z*/) {
 				ch1 |= 0x20
 			}
-			if (ch2 >= 65 /*A*/ && ch2 <= 90/*Z*/) {
+			if (ch2 >= 65 /*A*/ && ch2 <= 90 /*Z*/) {
 				ch2 |= 0x20
 			}
 		}
@@ -256,12 +249,12 @@ export function commonDir(path1: string | null, path2: string | null, ignoreCase
 			break
 		}
 		// 如果发现一个分隔符，则标记之前的内容是公共部分
-		if (ch1 === sepCode) {
+		if (ch1 === 47 /*/*/ || ch1 === 92 /*\*/) {
 			index = i
 		}
 	}
 	// 特殊处理：path1 = "foo", path2 = "foo" 或 "foo/goo"
-	if (i === path1.length && (i === path2.length || path2.charCodeAt(i) === sepCode)) {
+	if (i === path1.length && (i === path2.length || path2.charCodeAt(i) === 47 /*/*/ || path2.charCodeAt(i) === 92 /*\*/ || path1.length === 0)) {
 		return path1
 	}
 	return index < 0 ? null : path1.substr(0, index)

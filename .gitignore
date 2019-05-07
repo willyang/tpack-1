@@ -2,13 +2,13 @@
 
 ## 生成文件
 _*
-dist
+dist/
 
 ## Node.js
-node_modules
-jspm_packages
-bower_components
-.nyc_output
+node_modules/
+jspm_packages/
+bower_components/
+.nyc_output/
 coverage/
 
 # 编辑器
@@ -21,7 +21,7 @@ coverage/
 *.iws
 
 ## Visual Studio
-.vs
+.vs/
 **/[Bb]in/[Dd]ebug/
 **/[Bb]in/[Rr]elease/
 [Oo]bj/
@@ -29,7 +29,7 @@ coverage/
 *.vshost.*
 *.suo
 *.user
-_ReSharper*
+_ReSharper*/
 *.ReSharper
 .ntvs_analysis.dat
 **/[Bb]in/Microsoft.NodejsTools.WebRole.dll
@@ -43,8 +43,7 @@ _ReSharper*
 ._*
 
 ## Windows
-*.lnk
-$RECYCLE.BIN
+$RECYCLE.BIN/
 Desktop.ini
 ehthumbs.db
 Thumbs.db

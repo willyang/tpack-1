@@ -4,8 +4,10 @@ import * as deferred from "../../src/utils/deferred"
 export namespace deferredTest {
 
 	export async function deferredTest() {
-		let value = 1
 		const q = new deferred.Deferred()
+		await q
+
+		let value = 1
 		q.reject()
 		q.reject()
 		q.resolve()
@@ -14,7 +16,8 @@ export namespace deferredTest {
 			assert.strictEqual(++value, 3)
 		}, 1)
 		assert.strictEqual(++value, 2)
-		await q.promise
+
+		await q
 		assert.strictEqual(++value, 4)
 	}
 

@@ -1,32 +1,32 @@
-/** 表示一个异步队列 */
-export class AsyncQueue {
+/** 表示一个异步队列，用于串行执行多个异步任务 */
+export class AsyncQueue implements PromiseLike<any> {
 
-	/** 存储第一个函数 */
-	private _firstNode?: {
+	/** 正在执行的第一个异步任务，如果没有任务正在执行则为 `undefined` */
+	private _firstTask?: {
 		func: () => any
 		resolve: (value: any) => void
 		reject: (reason: any) => void
-		next?: AsyncQueue["_firstNode"]
+		next?: AsyncQueue["_firstTask"]
 	}
 
-	/** 存储最后一个函数 */
-	private _lastNode?: AsyncQueue["_firstNode"]
+	/** 正在执行的最后一个异步任务，如果没有任务正在执行则为 `undefined` */
+	private _lastTask?: AsyncQueue["_firstTask"]
 
-	/** 判断当前队列是否为空 */
-	get isEmpty() { return !this._firstNode }
+	/** 判断是否有异步任务正在执行 */
+	get isEmpty() { return !this._lastTask }
 
 	/**
 	 * 串行执行一个异步函数
 	 * @param func 待执行的函数
 	 * @returns 返回一个表示当前函数已执行完成的确认对象
 	 */
-	then<T>(func: () => T | Promise<T>) {
+	then<T>(func: (value?: any) => T | Promise<T>) {
 		return new Promise<T>((resolve, reject) => {
-			const nextNode = { func, resolve, reject }
-			if (this._lastNode) {
-				this._lastNode = this._lastNode.next = nextNode
+			const nextTask = { func, resolve, reject }
+			if (this._lastTask) {
+				this._lastTask = this._lastTask.next = nextTask
 			} else {
-				this._firstNode = this._lastNode = nextNode
+				this._firstTask = this._lastTask = nextTask
 				this._next()
 			}
 		})
@@ -34,17 +34,17 @@ export class AsyncQueue {
 
 	/** 执行队列中的下一个任务 */
 	private _next = async () => {
-		const firstNode = this._firstNode!
+		const currentTask = this._firstTask!
 		try {
-			firstNode.resolve(await firstNode.func())
+			currentTask.resolve(await currentTask.func())
 		} catch (e) {
-			firstNode.reject(e)
+			currentTask.reject(e)
 		} finally {
-			const nextNode = this._firstNode = firstNode.next
-			if (nextNode) {
+			const nextTask = this._firstTask = currentTask.next
+			if (nextTask) {
 				this._next()
 			} else {
-				this._lastNode = undefined
+				this._lastTask = undefined
 			}
 		}
 	}

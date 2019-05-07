@@ -13,10 +13,9 @@ export function stripBOM(content: string) {
  * 按顺序插入元素到已排序的数组中
  * @param sortedArray 已排序的数组
  * @param item 要插入的值
- * @param comparer 确定元素顺序的回调函数
- * * @param x 要比较的第一个元素
- * * @param y 要比较的第二个元素
- * * @returns 如果返回 `true`，则将 `x` 排在 `y` 的前面，否则相反
+ * @param comparer 确定元素顺序的回调函数，如果函数返回 `true`，则将 `x` 排在 `y` 的前面，否则相反
+ * @param comparer.x 要比较的第一个元素
+ * @param comparer.y 要比较的第二个元素
  */
 export function insertSorted<T>(sortedArray: T[], item: T, comparer: (x: T, y: T) => boolean) {
 	let start = 0
@@ -60,9 +59,9 @@ export function escapeRegExp(pattern: string) {
 /**
  * 拷贝对象的所有内容到哈希表
  * @param src 要拷贝的源对象
- * @param dest 要拷贝的目标对象
+ * @param dest 要拷贝的目标哈希表
  */
-export function copyToMap<T>(src: { [key: string]: T }, dest: Map<string, T>) {
+export function objectToMap<T>(src: { readonly [key: string]: T } | undefined, dest: Map<string, T>) {
 	for (const key in src) {
 		dest.set(key, src[key])
 	}
@@ -95,11 +94,10 @@ const dateFormatters = {
  * m   | 分            | mm: 06, m: 6
  * s   | 秒            | ss: 06, s: 6
  *
- * @example formatDate(new Date("2016/01/01 00:00:00")) // "2016-01-01 00:00:00"
  * @example formatDate(new Date("2016/01/01 00:00:00"), "yyyyMMdd") // "20160101"
  * @see https://docs.oracle.com/javase/7/docs/api/java/text/SimpleDateFormat.html
  */
-export function formatDate(date: Date, format = "yyyy-MM-dd HH:mm:ss") {
+export function formatDate(date: Date, format: string) {
 	return format.replace(/([yMdHms])\1*/g, (all, key: string) => {
 		key = dateFormatters[key as keyof typeof dateFormatters](date, all) + ""
 		while (key.length < all.length) {
@@ -132,7 +130,7 @@ export function formatHRTime(hrTime: [number, number]) {
 			unit = "min"
 		}
 	}
-	return value.toFixed(2).replace(/(\.00|0)?$/, unit)
+	return value.toFixed(2).replace(/\.00$|0$/, "") + unit
 }
 
 /**
@@ -141,17 +139,21 @@ export function formatHRTime(hrTime: [number, number]) {
  * @example formatSize(1024) // "1.00KB"
  */
 export function formatSize(byteSize: number) {
+	let unit: string
 	if (byteSize < 1000) {
-		return byteSize + "B"
+		unit = "B"
+	} else if (byteSize < 1024 * 1000) {
+		byteSize /= 1024
+		unit = "KB"
+	} else if (byteSize < 1024 * 1024 * 1000) {
+		byteSize /= 1024 * 1024
+		unit = "MB"
+	} else if (byteSize < 1024 * 1024 * 1024 * 1000) {
+		byteSize /= 1024 * 1024 * 1024
+		unit = "GB"
+	} else {
+		byteSize /= 1024 * 1024 * 1024 * 1024
+		unit = "TB"
 	}
-	if (byteSize < 1024 * 1000) {
-		return (byteSize / 1024).toFixed(2) + "KB"
-	}
-	if (byteSize < 1024 * 1024 * 1000) {
-		return (byteSize / (1024 * 1024)).toFixed(2) + "MB"
-	}
-	if (byteSize < 1024 * 1024 * 1024 * 1000) {
-		return (byteSize / (1024 * 1024 * 1024)).toFixed(2) + "GB"
-	}
-	return (byteSize / (1024 * 1024 * 1024 * 1024)).toFixed(2) + "TB"
+	return byteSize.toFixed(2).replace(/\.00$|0$/, "") + unit
 }
